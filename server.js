@@ -6,17 +6,13 @@ const express = require('express');
 const mongoose = require('mongoose');
 const TelegramBot = require('node-telegram-bot-api');
 
-// --- Import All Models ---
 const Owner = require('./models/owner.model');
 const ManagedChannel = require('./models/managedChannel.model');
 const Subscriber = require('./models/subscriber.model');
 const Transaction = require('./models/transaction.model');
-const Withdrawal = require('./models/withdrawal.model');
 const PendingPayment = require('./models/pendingPayment.model');
-
-// --- Import Bot Logic ---
 const { handleOwnerMessage, handleOwnerCallback } = require('./bot/ownerFlow');
-const { handleSubscriberMessage, handleSubscriberCallback } = require('./bot/subscriberFlow');
+const { handleSubscriberMessage, handleSubscriberCallback, initialize } = require('./bot/subscriberFlow');
 
 // =================================================================
 // 2. CONFIGURATION & INITIALIZATION
@@ -24,7 +20,7 @@ const { handleSubscriberMessage, handleSubscriberCallback } = require('./bot/sub
 const { PORT, MONGO_URI, BOT_TOKEN, SUPER_ADMIN_ID, AUTOMATION_SECRET, PLATFORM_COMMISSION_PERCENT } = process.env;
 
 if (!MONGO_URI || !BOT_TOKEN || !SUPER_ADMIN_ID) {
-    console.error("FATAL ERROR: MONGO_URI, BOT_TOKEN, and SUPER_ADMIN_ID are required.");
+    console.error("FATAL ERROR: Missing required environment variables.");
     process.exit(1);
 }
 
@@ -34,8 +30,7 @@ app.use(express.json());
 app.use(express.text());
 app.use(express.static('public'));
 
-// Pass bot instance to other modules that need it
-require('./bot/subscriberFlow').initialize(bot);
+initialize(bot);
 
 // =================================================================
 // 3. DATABASE CONNECTION
@@ -48,17 +43,13 @@ mongoose.connect(MONGO_URI).then(() => console.log('✅ MongoDB Connected!')).ca
 // =================================================================
 // 4. API ROUTES
 // =================================================================
-// iPhone Shortcut Payment Verification Endpoint
 app.post('/api/shortcut', async (req, res) => {
-    if (req.headers['x-shortcut-secret'] !== AUTOMATION_SECRET) {
-        return res.status(403).send('Unauthorized');
-    }
+    if (req.headers['x-shortcut-secret'] !== AUTOMATION_SECRET) return res.status(403).send('Unauthorized');
     const smsText = req.body;
     if (!smsText) return res.status(400).send('Bad Request');
     
     await bot.sendMessage(SUPER_ADMIN_ID, `🤖 Automated SMS Received:\n---\n${smsText}\n---`);
     
-    // Extract amount and process payment
     const amountRegex = /(?:Rs\.?|₹|INR)\s*([\d,]+\.\d{2})/;
     const match = smsText.match(amountRegex);
     if (match && match[1]) {
@@ -69,61 +60,66 @@ app.post('/api/shortcut', async (req, res) => {
     res.status(200).send('OK');
 });
 
-// Placeholder for Super Admin Dashboard APIs
 const superAdminApi = require('./api/superAdmin');
 app.use('/api/super', superAdminApi(bot));
 
-
 // =================================================================
-// 5. PAYMENT PROCESSING LOGIC (The Core Brain)
+// 5. PAYMENT PROCESSING LOGIC (REBUILT WITH FULL ERROR HANDLING)
 // =================================================================
 async function processPayment(amount, bot, method = "Unknown") {
-    const payment = await PendingPayment.findOneAndDelete({ unique_amount: amount });
+    try {
+        console.log(`[processPayment] Starting for amount: ${amount}, method: ${method}`);
+        
+        const payment = await PendingPayment.findOneAndDelete({ unique_amount: amount });
 
-    if (!payment) {
-        console.log(`No pending payment found for amount: ${amount}`);
-        // Notify admin only if the method is manual
-        if (method.startsWith("Manual")) {
-            await bot.sendMessage(SUPER_ADMIN_ID, `❌ No pending payment found for amount ₹${amount}. It might have expired or already been processed.`);
+        if (!payment) {
+            console.log(`[processPayment] No pending payment found for amount: ${amount}`);
+            if (method.startsWith("Manual")) {
+                await bot.sendMessage(SUPER_ADMIN_ID, `❌ **Verification Failed**\n\nNo pending payment found for amount \`₹${amount}\`.\n\nReason: It might have expired (older than 30 mins) or was already processed.`, {parse_mode: 'Markdown'});
+            }
+            return;
         }
-        return;
+        
+        console.log(`[processPayment] Found pending payment for user: ${payment.subscriber_id}`);
+        const { subscriber_id, owner_id, channel_id, plan_days, plan_price, channel_id_mongoose } = payment;
+        
+        const channel = await ManagedChannel.findById(channel_id_mongoose);
+        if (!channel) {
+            console.error(`[processPayment] CRITICAL ERROR: Channel not found with mongoose ID: ${channel_id_mongoose}`);
+            await bot.sendMessage(SUPER_ADMIN_ID, `❌ **Verification Failed**\n\nFound payment for \`₹${amount}\`, but could not find the associated channel in the database. Please check channel settings.`, {parse_mode: 'Markdown'});
+            return;
+        }
+
+        const owner = await Owner.findById(owner_id);
+        if (!owner) {
+             console.error(`[processPayment] CRITICAL ERROR: Owner not found with ID: ${owner_id}`);
+             await bot.sendMessage(SUPER_ADMIN_ID, `❌ **Verification Failed**\n\nFound payment for \`₹${amount}\`, but could not find the channel owner.`, {parse_mode: 'Markdown'});
+             return;
+        }
+        
+        console.log(`[processPayment] Processing for Channel: ${channel.channel_name}, Owner: ${owner.first_name}`);
+
+        const commission = (plan_price * PLATFORM_COMMISSION_PERCENT) / 100;
+        const amountToCredit = plan_price - commission;
+
+        await Transaction.create({ owner_id, subscriber_id, channel_id, plan_days, amount_paid: plan_price, commission_charged: commission, amount_credited_to_owner: amountToCredit });
+        await Owner.findByIdAndUpdate(owner_id, { $inc: { wallet_balance: amountToCredit, total_earnings: plan_price } });
+
+        const expiryDate = new Date(Date.now() + plan_days * 24 * 60 * 60 * 1000);
+        await Subscriber.findOneAndUpdate({ telegram_id: subscriber_id, channel_id: channel_id }, { expires_at: expiryDate, owner_id: owner.telegram_id, subscribed_at: new Date() }, { upsert: true });
+        
+        const inviteLink = await bot.createChatInviteLink(channel_id, { member_limit: 1 });
+        
+        console.log(`[processPayment] Success! Sending notifications.`);
+        
+        await bot.sendMessage(subscriber_id, `✅ Payment confirmed! Your access to "${channel.channel_name}" is active.\n\nJoin using this one-time link: ${inviteLink.invite_link}`);
+        await bot.sendMessage(owner.telegram_id, `🎉 New Sale!\nA user subscribed to your channel "${channel.channel_name}" for ${plan_days} days.\n💰 ₹${amountToCredit.toFixed(2)} has been credited to your wallet.`);
+        await bot.sendMessage(SUPER_ADMIN_ID, `💸 **Sale Confirmed!** (via ${method})\n\nOwner: ${owner.first_name}\nAmount: \`₹${plan_price.toFixed(2)}\`\nCommission: \`₹${commission.toFixed(2)}\`\nSubscriber: \`${subscriber_id}\``, { parse_mode: 'Markdown' });
+
+    } catch (error) {
+        console.error("[processPayment] FATAL CRASH:", error);
+        await bot.sendMessage(SUPER_ADMIN_ID, `❌ **CRITICAL ERROR during payment processing for ₹${amount}**\n\n\`${error.message}\`\n\nPlease check the logs.`);
     }
-
-    const { subscriber_id, owner_id, channel_id, plan_days, plan_price } = payment;
-    
-    const channel = await ManagedChannel.findById(payment.channel_id_mongoose);
-    if (!channel) return console.log("Channel not found during processing");
-    
-    // Calculate commission
-    const commission = (plan_price * PLATFORM_COMMISSION_PERCENT) / 100;
-    const amountToCredit = plan_price - commission;
-
-    // Create a transaction record
-    await Transaction.create({
-        owner_id, subscriber_id, channel_id, plan_days,
-        amount_paid: plan_price,
-        commission_charged: commission,
-        amount_credited_to_owner: amountToCredit
-    });
-
-    // Update owner's wallet
-    const owner = await Owner.findByIdAndUpdate(owner_id, { $inc: { wallet_balance: amountToCredit, total_earnings: plan_price } });
-
-    // Add user to subscribers list
-    const expiryDate = new Date(Date.now() + plan_days * 24 * 60 * 60 * 1000);
-    await Subscriber.findOneAndUpdate(
-        { telegram_id: subscriber_id, channel_id: channel_id },
-        { expires_at: expiryDate, owner_id: owner.telegram_id, subscribed_at: new Date() },
-        { upsert: true }
-    );
-    
-    // Create one-time invite link
-    const inviteLink = await bot.createChatInviteLink(channel_id, { member_limit: 1 });
-    
-    // Notify everyone
-    await bot.sendMessage(subscriber_id, `✅ Payment confirmed! Your access to "${channel.channel_name}" is active.\n\nJoin using this one-time link: ${inviteLink.invite_link}`);
-    await bot.sendMessage(owner.telegram_id, `🎉 New Sale!\nA user subscribed to your channel "${channel.channel_name}" for ${plan_days} days.\n💰 ₹${amountToCredit.toFixed(2)} has been credited to your wallet.`);
-    await bot.sendMessage(SUPER_ADMIN_ID, `💸 New Platform Sale! (via ${method})\nOwner: ${owner.first_name}\nAmount: ₹${plan_price.toFixed(2)}\nCommission: ₹${commission.toFixed(2)}`);
 }
 
 // =================================================================
@@ -134,38 +130,29 @@ async function handleSuperAdminCommands(bot, msg) {
     const text = msg.text || "";
     const fromId = msg.from.id.toString();
 
-    // FEATURE: Manual Verification by sending unique amount
-    const amountMatch = text.match(/^(\d+\.\d{2})$/);
-    if (amountMatch) {
+    const amountMatch = text.match(/(\d+\.\d{2})/);
+    if (amountMatch && amountMatch[1]) {
         const amount = amountMatch[1];
         await bot.sendMessage(fromId, `Received amount ₹${amount}. Attempting manual verification...`);
         await processPayment(amount, bot, "Manual (Admin)");
-        return;
+        return true;
     }
 
-    // FEATURE: Manual Subscriber Add Command
     if (text.startsWith('/addsubscriber ')) {
-        const parts = text.split(' ');
-        if (parts.length !== 4) {
-            return bot.sendMessage(fromId, "Invalid format. Use:\n/addsubscriber <user_id> <channel_id> <days>");
-        }
-        const [, subscriberId, channelId, days] = parts;
-        // ... (manual add logic from previous answer)
-        // This is a more forceful method that bypasses payment logic
         await bot.sendMessage(fromId, "Manual subscriber add command executed."); // Placeholder
-        return;
+        return true;
     }
+    
+    return false;
 }
-
 
 bot.on('message', async (msg) => {
     const fromId = msg.from.id.toString();
     const text = msg.text || "";
 
     if (fromId === SUPER_ADMIN_ID) {
-        await handleSuperAdminCommands(bot, msg);
-        // We stop here so admin commands don't trigger other flows
-        return; 
+        const commandHandled = await handleSuperAdminCommands(bot, msg);
+        if (commandHandled) return; 
     }
     
     if (text.startsWith('/start ')) {
@@ -181,7 +168,6 @@ bot.on('message', async (msg) => {
 });
 
 bot.on('callback_query', async (callbackQuery) => {
-    // This logic remains the same
     const data = callbackQuery.data || "";
     if (data.startsWith('sub_')) {
         await handleSubscriberCallback(bot, callbackQuery);
@@ -189,7 +175,6 @@ bot.on('callback_query', async (callbackQuery) => {
          await handleOwnerCallback(bot, callbackQuery);
     }
 });
-
 
 bot.on("polling_error", (error) => {
     console.log(`Polling Error: ${error.code} - ${error.message}`);
