@@ -23,31 +23,33 @@ async function handleOwnerMessage(bot, msg) {
 
     // Handle multi-step conversations
     if (state) {
-        // STEP 2: User sends channel username or invite link
-        if (state.awaiting === 'channel_info') {
-            const channelInput = text.trim();
-            try {
-                // Get chat info using the provided username/link
-                const chat = await bot.getChat(channelInput);
-                const channelId = chat.id.toString();
-                const channelName = chat.title;
+        // STEP 2: User forwards a message from their channel
+        if (state.awaiting === 'channel_forward') {
+            if (msg.forward_from_chat) {
+                const channelId = msg.forward_from_chat.id.toString();
+                const channelName = msg.forward_from_chat.title;
 
-                // Check if the bot is an admin
-                const chatMember = await bot.getChatMember(channelId, msg.from.id); // Check OWNER's status first
-                const botMember = await bot.getChatMember(channelId, (await bot.getMe()).id);
+                try {
+                    // Check if the bot is an admin in the channel
+                    const botMember = await bot.getChatMember(channelId, (await bot.getMe()).id);
 
-                if (botMember.status !== 'administrator') {
-                    await bot.sendMessage(chatId, `❌ Bot is not an admin in "${channelName}".\n\nPlease go to your channel settings -> Administrators -> Add Admin, and add the bot. Then try again.`);
+                    if (botMember.status !== 'administrator') {
+                        await bot.sendMessage(chatId, `❌ Bot is not an admin in "${channelName}".\n\nPlease go to your channel settings -> Administrators -> Add Admin, and add the bot. Then try the /addchannel command again.`);
+                        delete userStates[fromId];
+                        return;
+                    }
+
+                    // Bot is admin, proceed to the next step
+                    userStates[fromId] = { awaiting: 'plans', channel_id: channelId, channel_name: channelName };
+                    await bot.sendMessage(chatId, `✅ Great! Bot is an admin in "${channelName}".\n\nNow, send your subscription plans in this format:\n\n\`30 days 100 rs\`\n\`90 days 250 rs\`\n\n(Each plan on a new line)`, { parse_mode: 'Markdown' });
+
+                } catch (error) {
+                    console.error("Error checking admin status:", error.response ? error.response.body : error.message);
+                    await bot.sendMessage(chatId, `❌ An error occurred. Please make sure the bot is an admin in your channel and try again.`);
                     delete userStates[fromId];
-                    return;
                 }
-
-                userStates[fromId] = { awaiting: 'plans', channel_id: channelId, channel_name: channelName };
-                await bot.sendMessage(chatId, `✅ Great! Bot is an admin in "${channelName}".\n\nNow, send your subscription plans in this format:\n\n\`30 days 100 rs\`\n\`90 days 250 rs\`\n\n(Each plan on a new line)`, { parse_mode: 'Markdown' });
-
-            } catch (error) {
-                console.error("Error getting chat info:", error.response ? error.response.body : error.message);
-                await bot.sendMessage(chatId, `❌ Could not find the channel or an error occurred.\n\nPlease ensure the username (like \`@mychannel\`) or invite link is correct and the bot has been added to the channel. Then, send it again.`);
+            } else {
+                await bot.sendMessage(chatId, `That was not a forwarded message. Please forward a message from your channel.`);
             }
             return;
         }
@@ -116,14 +118,12 @@ async function handleOwnerCallback(bot, cbq) {
 }
 
 async function startAddChannelFlow(bot, chatId, fromId) {
-    userStates[fromId] = { awaiting: 'channel_info' };
-    await bot.sendMessage(chatId, `Okay, let's add a new channel.\n\n*Step 1:* Make this bot an Admin in your private channel.\n\n*Step 2:* Send your channel's username (like \`@mychannel\`) or an invite link here.`, { parse_mode: "Markdown" });
+    userStates[fromId] = { awaiting: 'channel_forward' };
+    await bot.sendMessage(chatId, `Okay, let's add a new channel.\n\n*Step 1:* Make sure this bot is an Admin in your channel.\n\n*Step 2:* Now, **forward any message** from that channel here.`, { parse_mode: "Markdown" });
 }
 
 async function showDashboard(bot, chatId, owner) {
-    // We will add more details to dashboard later
     await bot.sendMessage(chatId, `*Your Dashboard*\n\n💰 Wallet Balance: ₹${owner.wallet_balance.toFixed(2)}\n📈 Total Earnings: ₹${owner.total_earnings.toFixed(2)}`, { parse_mode: 'Markdown' });
 }
-
 
 module.exports = { handleOwnerMessage, handleOwnerCallback };
