@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin Panel</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+        body { font-family: 'Inter', sans-serif; }
+    </style>
+</head>
+<body class="bg-slate-100 flex items-center justify-center min-h-screen p-4">
+    <div class="space-y-8 max-w-md w-full">
+        <!-- Add Subscriber Card -->
+        <div class="bg-white p-8 rounded-xl shadow-lg">
+            <h1 class="text-2xl font-bold mb-6 text-slate-800">Add New Subscriber</h1>
+            <form id="add-user-form" class="space-y-4">
+                <div>
+                    <label for="telegram_id_add" class="block text-sm font-medium text-slate-700">Telegram User ID:</label>
+                    <input type="text" id="telegram_id_add" name="telegram_id" required class="mt-1 block w-full px-3 py-2 border border-slate-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500">
+                </div>
+                <div>
+                    <label for="days" class="block text-sm font-medium text-slate-700">Subscription Days:</label>
+                    <input type="number" id="days" name="days" value="30" required class="mt-1 block w-full px-3 py-2 border border-slate-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500">
+                </div>
+                <div>
+                    <label for="secret_key_add" class="block text-sm font-medium text-slate-700">Admin Secret Key:</label>
+                    <input type="password" id="secret_key_add" name="secret_key" required class="mt-1 block w-full px-3 py-2 border border-slate-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500">
+                </div>
+                <button type="submit" class="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700">Add Subscriber</button>
+            </form>
+            <p id="response-add" class="mt-4 text-center font-medium"></p>
+        </div>
+
+        <!-- Remove User Card -->
+        <div class="bg-white p-8 rounded-xl shadow-lg">
+            <h1 class="text-2xl font-bold mb-6 text-red-600">Remove User Instantly</h1>
+            <form id="remove-user-form" class="space-y-4">
+                <div>
+                    <label for="telegram_id_remove" class="block text-sm font-medium text-slate-700">Telegram User ID to Remove:</label>
+                    <input type="text" id="telegram_id_remove" name="telegram_id_remove" required class="mt-1 block w-full px-3 py-2 border border-slate-300 rounded-md shadow-sm focus:outline-none focus:ring-red-500 focus:border-red-500">
+                </div>
+                <div>
+                    <label for="secret_key_remove" class="block text-sm font-medium text-slate-700">Admin Secret Key:</label>
+                    <input type="password" id="secret_key_remove" name="secret_key_remove" required class="mt-1 block w-full px-3 py-2 border border-slate-300 rounded-md shadow-sm focus:outline-none focus:ring-red-500 focus:border-red-500">
+                </div>
+                <button type="submit" class="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-red-600 hover:bg-red-700">Remove User Instantly</button>
+            </form>
+            <p id="response-remove" class="mt-4 text-center font-medium"></p>
+        </div>
+    </div>
+
+    <script>
+        // Add User Form Logic
+        document.getElementById('add-user-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const responseElement = document.getElementById('response-add');
+            responseElement.textContent = 'Processing...';
+            responseElement.className = 'text-slate-600';
+
+            const formData = new FormData(e.target);
+            const secret = formData.get('secret_key');
+            
+            const response = await fetch(`/api/admin?secret=${secret}`, {
+                method: 'POST',
+                body: new URLSearchParams(formData)
+            });
+
+            const resultText = await response.text();
+            
+            if (response.ok) {
+                responseElement.textContent = resultText;
+                responseElement.className = 'text-green-600';
+                e.target.reset();
+            } else {
+                responseElement.textContent = 'Error: ' + resultText;
+                responseElement.className = 'text-red-600';
+            }
+        });
+
+        // Remove User Form Logic
+        document.getElementById('remove-user-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const responseElement = document.getElementById('response-remove');
+            responseElement.textContent = 'Processing...';
+            responseElement.className = 'text-slate-600';
+
+            const formData = new FormData(e.target);
+            const telegramId = formData.get('telegram_id_remove');
+            const secret = formData.get('secret_key_remove');
+
+            const response = await fetch(`/api/remove?secret=${secret}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                body: new URLSearchParams({ telegram_id: telegramId })
+            });
+
+            const resultText = await response.text();
+            
+            if (response.ok) {
+                responseElement.textContent = resultText;
+                responseElement.className = 'text-green-600';
+                e.target.reset();
+            } else {
+                responseElement.textContent = 'Error: ' + resultText;
+                responseElement.className = 'text-red-600';
+            }
+        });
+    </script>
+</body>
+</html>
