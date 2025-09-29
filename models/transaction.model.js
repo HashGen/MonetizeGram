@@ -1,6 +1,6 @@
 const mongoose = require('mongoose');
 const transactionSchema = new mongoose.Schema({
-    owner_id: { type: String, required: true, index: true },
+    owner_id: { type: mongoose.Schema.Types.ObjectId, ref: 'Owner', required: true },
     subscriber_id: { type: String, required: true },
     channel_id: { type: String, required: true },
     plan_days: { type: Number, required: true },
