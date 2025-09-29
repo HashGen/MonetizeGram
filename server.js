@@ -64,40 +64,24 @@ const superAdminApi = require('./api/superAdmin');
 app.use('/api/super', superAdminApi(bot));
 
 // =================================================================
-// 5. PAYMENT PROCESSING LOGIC (REBUILT WITH FULL ERROR HANDLING)
+// 5. PAYMENT PROCESSING LOGIC
 // =================================================================
 async function processPayment(amount, bot, method = "Unknown") {
     try {
-        console.log(`[processPayment] Starting for amount: ${amount}, method: ${method}`);
-        
         const payment = await PendingPayment.findOneAndDelete({ unique_amount: amount });
-
         if (!payment) {
-            console.log(`[processPayment] No pending payment found for amount: ${amount}`);
             if (method.startsWith("Manual")) {
-                await bot.sendMessage(SUPER_ADMIN_ID, `❌ **Verification Failed**\n\nNo pending payment found for amount \`₹${amount}\`.\n\nReason: It might have expired (older than 30 mins) or was already processed.`, {parse_mode: 'Markdown'});
+                await bot.sendMessage(SUPER_ADMIN_ID, `❌ **Verification Failed**\nNo pending payment found for amount \`₹${amount}\`.`, {parse_mode: 'Markdown'});
             }
             return;
         }
         
-        console.log(`[processPayment] Found pending payment for user: ${payment.subscriber_id}`);
         const { subscriber_id, owner_id, channel_id, plan_days, plan_price, channel_id_mongoose } = payment;
-        
         const channel = await ManagedChannel.findById(channel_id_mongoose);
-        if (!channel) {
-            console.error(`[processPayment] CRITICAL ERROR: Channel not found with mongoose ID: ${channel_id_mongoose}`);
-            await bot.sendMessage(SUPER_ADMIN_ID, `❌ **Verification Failed**\n\nFound payment for \`₹${amount}\`, but could not find the associated channel in the database. Please check channel settings.`, {parse_mode: 'Markdown'});
-            return;
-        }
-
-        const owner = await Owner.findById(owner_id);
-        if (!owner) {
-             console.error(`[processPayment] CRITICAL ERROR: Owner not found with ID: ${owner_id}`);
-             await bot.sendMessage(SUPER_ADMIN_ID, `❌ **Verification Failed**\n\nFound payment for \`₹${amount}\`, but could not find the channel owner.`, {parse_mode: 'Markdown'});
-             return;
-        }
+        if (!channel) throw new Error(`Channel not found with mongoose ID: ${channel_id_mongoose}`);
         
-        console.log(`[processPayment] Processing for Channel: ${channel.channel_name}, Owner: ${owner.first_name}`);
+        const owner = await Owner.findById(owner_id);
+        if (!owner) throw new Error(`Owner not found with ID: ${owner_id}`);
 
         const commission = (plan_price * PLATFORM_COMMISSION_PERCENT) / 100;
         const amountToCredit = plan_price - commission;
@@ -110,8 +94,6 @@ async function processPayment(amount, bot, method = "Unknown") {
         
         const inviteLink = await bot.createChatInviteLink(channel_id, { member_limit: 1 });
         
-        console.log(`[processPayment] Success! Sending notifications.`);
-        
         await bot.sendMessage(subscriber_id, `✅ Payment confirmed! Your access to "${channel.channel_name}" is active.\n\nJoin using this one-time link: ${inviteLink.invite_link}`);
         await bot.sendMessage(owner.telegram_id, `🎉 New Sale!\nA user subscribed to your channel "${channel.channel_name}" for ${plan_days} days.\n💰 ₹${amountToCredit.toFixed(2)} has been credited to your wallet.`);
         await bot.sendMessage(SUPER_ADMIN_ID, `💸 **Sale Confirmed!** (via ${method})\n\nOwner: ${owner.first_name}\nAmount: \`₹${plan_price.toFixed(2)}\`\nCommission: \`₹${commission.toFixed(2)}\`\nSubscriber: \`${subscriber_id}\``, { parse_mode: 'Markdown' });
@@ -123,26 +105,19 @@ async function processPayment(amount, bot, method = "Unknown") {
 }
 
 // =================================================================
-// 6. TELEGRAM BOT ROUTER
+// 6. TELEGRAM BOT ROUTER (THE FIX IS HERE)
 // =================================================================
 
 async function handleSuperAdminCommands(bot, msg) {
     const text = msg.text || "";
-    const fromId = msg.from.id.toString();
-
     const amountMatch = text.match(/(\d+\.\d{2})/);
     if (amountMatch && amountMatch[1]) {
         const amount = amountMatch[1];
-        await bot.sendMessage(fromId, `Received amount ₹${amount}. Attempting manual verification...`);
+        await bot.sendMessage(msg.from.id, `Received amount ₹${amount}. Attempting manual verification...`);
         await processPayment(amount, bot, "Manual (Admin)");
         return true;
     }
-
-    if (text.startsWith('/addsubscriber ')) {
-        await bot.sendMessage(fromId, "Manual subscriber add command executed."); // Placeholder
-        return true;
-    }
-    
+    // Add other super admin commands here if needed
     return false;
 }
 
@@ -150,22 +125,31 @@ bot.on('message', async (msg) => {
     const fromId = msg.from.id.toString();
     const text = msg.text || "";
 
+    // Specific command for subscribers first
+    if (text.startsWith('/start ')) {
+        return handleSubscriberMessage(bot, msg);
+    }
+
+    // Check if the user is the Super Admin
     if (fromId === SUPER_ADMIN_ID) {
         const commandHandled = await handleSuperAdminCommands(bot, msg);
-        if (commandHandled) return; 
-    }
-    
-    if (text.startsWith('/start ')) {
-        await handleSubscriberMessage(bot, msg);
-    } else {
-        const owner = await Owner.findOne({ telegram_id: fromId });
-        if (owner) {
-            await handleOwnerMessage(bot, msg);
-        } else {
-            await handleSubscriberMessage(bot, msg);
+        // If it was a special admin command (like sending an amount), stop.
+        // Otherwise, treat the admin as a normal owner.
+        if (commandHandled) {
+            return;
         }
     }
+
+    // Check if the user is a registered owner (this includes the admin now)
+    const owner = await Owner.findOne({ telegram_id: fromId });
+    if (owner) {
+        return handleOwnerMessage(bot, msg);
+    }
+    
+    // If none of the above, it's a new user
+    return handleSubscriberMessage(bot, msg);
 });
+
 
 bot.on('callback_query', async (callbackQuery) => {
     const data = callbackQuery.data || "";
