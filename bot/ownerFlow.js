@@ -126,4 +126,4 @@ async function showDashboard(bot, chatId, owner) {
 }
 
 
-module.js exports = { handleOwnerMessage, handleOwnerCallback };
+module.exports = { handleOwnerMessage, handleOwnerCallback };
