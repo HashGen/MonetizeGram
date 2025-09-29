@@ -64,12 +64,11 @@ const superAdminApi = require('./api/superAdmin');
 app.use('/api/super', superAdminApi(bot));
 
 // =================================================================
-// 5. PAYMENT PROCESSING LOGIC (REBUILT WITH THE CORRECT FIX)
+// 5. PAYMENT PROCESSING LOGIC
 // =================================================================
 async function processPayment(amount, bot, method = "Unknown") {
     try {
         const payment = await PendingPayment.findOneAndDelete({ unique_amount: amount });
-
         if (!payment) {
             if (method.startsWith("Manual")) {
                 await bot.sendMessage(SUPER_ADMIN_ID, `❌ **Verification Failed**\nNo pending payment found for amount \`₹${amount}\`.`, {parse_mode: 'Markdown'});
@@ -77,18 +76,10 @@ async function processPayment(amount, bot, method = "Unknown") {
             return;
         }
         
-        // --- THIS IS THE FIX ---
-        // We are now using the correct ID from the correct field
         const { subscriber_id, owner_id, channel_id, plan_days, plan_price, channel_id_mongoose } = payment;
         const channel = await ManagedChannel.findById(channel_id_mongoose);
-        // --- END OF FIX ---
-
-        if (!channel) {
-            await bot.sendMessage(SUPER_ADMIN_ID, `❌ **Verification Failed**\nFound payment for \`₹${amount}\`, but could not find the associated channel in the database. Please check channel settings.`, {parse_mode: 'Markdown'});
-            // We should put the payment back so it can be fixed, but for now, this is enough.
-            return;
-        }
-
+        if (!channel) throw new Error(`Channel not found with mongoose ID: ${channel_id_mongoose}`);
+        
         const owner = await Owner.findById(owner_id);
         if (!owner) throw new Error(`Owner not found with ID: ${owner_id}`);
 
@@ -101,9 +92,16 @@ async function processPayment(amount, bot, method = "Unknown") {
         const expiryDate = new Date(Date.now() + plan_days * 24 * 60 * 60 * 1000);
         await Subscriber.findOneAndUpdate({ telegram_id: subscriber_id, channel_id: channel_id }, { expires_at: expiryDate, owner_id: owner.telegram_id, subscribed_at: new Date() }, { upsert: true });
         
-        const inviteLink = await bot.createChatInviteLink(channel_id, { member_limit: 1 });
+        // --- THIS IS THE FIX ---
+        // We are now adding an expiry date to make the link truly one-time use.
+        const expireDate = Math.floor(Date.now() / 1000) + (24 * 60 * 60); // Link will be valid for 24 hours
+        const inviteLink = await bot.createChatInviteLink(channel_id, {
+            member_limit: 1,
+            expire_date: expireDate
+        });
+        // --- END OF FIX ---
         
-        await bot.sendMessage(subscriber_id, `✅ Payment confirmed! Your access to "${channel.channel_name}" is active.\n\nJoin using this one-time link: ${inviteLink.invite_link}`);
+        await bot.sendMessage(subscriber_id, `✅ Payment confirmed! Your access to "${channel.channel_name}" is active.\n\nJoin using this **one-time link**: ${inviteLink.invite_link}\n\n_Note: This link will expire in 24 hours and can only be used once._`, { parse_mode: 'Markdown' });
         await bot.sendMessage(owner.telegram_id, `🎉 New Sale!\nA user subscribed to your channel "${channel.channel_name}" for ${plan_days} days.\n💰 ₹${amountToCredit.toFixed(2)} has been credited to your wallet.`);
         await bot.sendMessage(SUPER_ADMIN_ID, `💸 **Sale Confirmed!** (via ${method})\n\nOwner: ${owner.first_name}\nAmount: \`₹${plan_price.toFixed(2)}\`\nCommission: \`₹${commission.toFixed(2)}\`\nSubscriber: \`${subscriber_id}\``, { parse_mode: 'Markdown' });
 
@@ -114,9 +112,8 @@ async function processPayment(amount, bot, method = "Unknown") {
 }
 
 // =================================================================
-// 6. TELEGRAM BOT ROUTER (No changes here, it's correct)
+// 6. TELEGRAM BOT ROUTER
 // =================================================================
-
 async function handleSuperAdminCommands(bot, msg) {
     const text = msg.text || "";
     const amountMatch = text.match(/(\d+\.\d{2})/);
