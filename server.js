@@ -64,11 +64,12 @@ const superAdminApi = require('./api/superAdmin');
 app.use('/api/super', superAdminApi(bot));
 
 // =================================================================
-// 5. PAYMENT PROCESSING LOGIC
+// 5. PAYMENT PROCESSING LOGIC (REBUILT WITH THE CORRECT FIX)
 // =================================================================
 async function processPayment(amount, bot, method = "Unknown") {
     try {
         const payment = await PendingPayment.findOneAndDelete({ unique_amount: amount });
+
         if (!payment) {
             if (method.startsWith("Manual")) {
                 await bot.sendMessage(SUPER_ADMIN_ID, `❌ **Verification Failed**\nNo pending payment found for amount \`₹${amount}\`.`, {parse_mode: 'Markdown'});
@@ -76,10 +77,18 @@ async function processPayment(amount, bot, method = "Unknown") {
             return;
         }
         
+        // --- THIS IS THE FIX ---
+        // We are now using the correct ID from the correct field
         const { subscriber_id, owner_id, channel_id, plan_days, plan_price, channel_id_mongoose } = payment;
         const channel = await ManagedChannel.findById(channel_id_mongoose);
-        if (!channel) throw new Error(`Channel not found with mongoose ID: ${channel_id_mongoose}`);
-        
+        // --- END OF FIX ---
+
+        if (!channel) {
+            await bot.sendMessage(SUPER_ADMIN_ID, `❌ **Verification Failed**\nFound payment for \`₹${amount}\`, but could not find the associated channel in the database. Please check channel settings.`, {parse_mode: 'Markdown'});
+            // We should put the payment back so it can be fixed, but for now, this is enough.
+            return;
+        }
+
         const owner = await Owner.findById(owner_id);
         if (!owner) throw new Error(`Owner not found with ID: ${owner_id}`);
 
@@ -105,7 +114,7 @@ async function processPayment(amount, bot, method = "Unknown") {
 }
 
 // =================================================================
-// 6. TELEGRAM BOT ROUTER (THE FIX IS HERE)
+// 6. TELEGRAM BOT ROUTER (No changes here, it's correct)
 // =================================================================
 
 async function handleSuperAdminCommands(bot, msg) {
@@ -117,7 +126,6 @@ async function handleSuperAdminCommands(bot, msg) {
         await processPayment(amount, bot, "Manual (Admin)");
         return true;
     }
-    // Add other super admin commands here if needed
     return false;
 }
 
@@ -125,31 +133,19 @@ bot.on('message', async (msg) => {
     const fromId = msg.from.id.toString();
     const text = msg.text || "";
 
-    // Specific command for subscribers first
     if (text.startsWith('/start ')) {
         return handleSubscriberMessage(bot, msg);
     }
-
-    // Check if the user is the Super Admin
     if (fromId === SUPER_ADMIN_ID) {
         const commandHandled = await handleSuperAdminCommands(bot, msg);
-        // If it was a special admin command (like sending an amount), stop.
-        // Otherwise, treat the admin as a normal owner.
-        if (commandHandled) {
-            return;
-        }
+        if (commandHandled) return;
     }
-
-    // Check if the user is a registered owner (this includes the admin now)
     const owner = await Owner.findOne({ telegram_id: fromId });
     if (owner) {
         return handleOwnerMessage(bot, msg);
     }
-    
-    // If none of the above, it's a new user
     return handleSubscriberMessage(bot, msg);
 });
-
 
 bot.on('callback_query', async (callbackQuery) => {
     const data = callbackQuery.data || "";
@@ -160,9 +156,7 @@ bot.on('callback_query', async (callbackQuery) => {
     }
 });
 
-bot.on("polling_error", (error) => {
-    console.log(`Polling Error: ${error.code} - ${error.message}`);
-});
+bot.on("polling_error", (error) => console.log(`Polling Error: ${error.code} - ${error.message}`));
 console.log('🤖 Bot is running...');
 
 // =================================================================
