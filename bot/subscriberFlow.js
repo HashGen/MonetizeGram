@@ -9,13 +9,12 @@ module.exports = {
     },
     
     handleSubscriberMessage: async (bot, msg) => {
-        // ... (puraana code bilkul same)
         const chatId = msg.chat.id;
         const text = msg.text;
 
         if (text.startsWith('/start ')) {
             const key = text.split(' ')[1];
-            const channel = await ManagedChannel.findOne({ unique_start_key: key }).populate('owner_id');
+            const channel = await ManagedChannel.findOne({ unique_start_key: key });
             if (!channel) {
                 await bot.sendMessage(chatId, `Sorry, this subscription link is invalid.`);
                 return;
@@ -36,7 +35,6 @@ module.exports = {
     },
 
     handleSubscriberCallback: async (bot, cbq) => {
-        // ... (yahan naya code add hua hai)
         const fromId = cbq.from.id.toString();
         const data = cbq.data;
 
@@ -52,6 +50,8 @@ module.exports = {
 
             const uniqueAmount = `${plan.price}.${Math.floor(Math.random() * 90) + 10}`;
             
+            // --- THIS IS THE FIX ---
+            // Now we are saving the correct ID to the new field
             await PendingPayment.create({
                 unique_amount: uniqueAmount,
                 subscriber_id: fromId,
@@ -59,12 +59,11 @@ module.exports = {
                 channel_id: channel.channel_id,
                 plan_days: plan.days,
                 plan_price: plan.price,
-                channel_id_mongoose: channel._id // Store mongoose ObjectId for easier lookup
+                channel_id_mongoose: channel._id // This ensures we can find the channel later
             });
-
-            // --- NAYA FEATURE: ADMIN NOTIFICATION ---
+            // --- END OF FIX ---
+            
             await botInstance.sendMessage(process.env.SUPER_ADMIN_ID, `🔔 New Payment Link Generated:\n\nUser: \`${fromId}\`\nAmount: \`₹${uniqueAmount}\`\nChannel: ${channel.channel_name}`, { parse_mode: 'Markdown'});
-            // --- END OF NEW FEATURE ---
             
             const paymentUrl = `${process.env.YOUR_DOMAIN}/?amount=${uniqueAmount}`;
             await bot.sendMessage(fromId, `Great! To get the *${plan.days} Days Plan*, please pay exactly *₹${uniqueAmount}* using the link below.`, {
