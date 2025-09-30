@@ -6,47 +6,190 @@ const { nanoid } = require('nanoid');
 
 const userStates = {};
 
+// --- MULTI-LANGUAGE HELP TEXTS (WITH FULL DETAILS) ---
 const LANGUAGES = {
     en: {
         HELP_TEXTS: {
-            main: "Welcome to the Help Center! Please choose a topic below.",
-            gettingStarted: `*🚀 Getting Started: Adding Your Channel*\n\n1️⃣ Use the \`/addchannel\` command.\n2️⃣ Make the bot an **Admin** in your channel.\n3️⃣ **Forward any message** from that channel to the bot.\n4️⃣ Set your subscription prices (e.g., \`30 days 100 rs\`).\n\nThat's it! The bot will give you a unique link to share.`,
-            dashboard: `*📊 Understanding Your Dashboard*\n\n📈 *Total Revenue:* Total sales generated.\n➖ *Service Charge:* Our platform fee (${process.env.PLATFORM_COMMISSION_PERCENT}%).\n💰 *Gross Earnings:* Your earning after the service charge.\n💸 *Total Paid Out:* Money you have successfully withdrawn.\n✅ **Net Balance:** Money in your wallet, ready to be withdrawn.`,
-            managingChannels: `*📺 Managing Your Channels*\n\nUse \`/mychannels\` to see your connected channels. The "⚙️ Manage" button gives you options to:\n\n- *Edit Plans:* Change prices.\n- *Get Link:* Get the subscriber link again.\n- *Remove Channel:* Delete the channel from the platform.`,
-            withdrawals: `*💸 The Withdrawal Process*\n\n1️⃣ Use the \`/withdraw\` command when your balance is above ₹${process.env.MINIMUM_WITHDRAWAL_AMOUNT}.\n2️⃣ Provide your UPI ID.\n3️⃣ Confirm the request.\n4️⃣ The admin will process the payment within 24 hours.`
+            main: "Welcome to the Help Center! I am here to guide you. Please choose a topic below to learn more.",
+            gettingStarted: `*🚀 Getting Started: How to Add Your Channel*
+
+This is a simple 3-step process to connect your channel to our platform and start earning.
+
+1️⃣  **Start the Process**
+   - Use the \`/addchannel\` command or go to the main menu (\`/start\`) and click "➕ Add a New Channel".
+
+2️⃣  **Give Admin Permissions**
+   - The bot will ask you to make it an **Admin** in your premium channel.
+   - Go to your channel's settings -> Administrators -> Add Admin, and add the bot. Please give it permission to "Invite Users via Link".
+
+3️⃣  **Forward a Message**
+   - Once the bot is an admin, **forward any message** from that channel to the bot. This is how the bot confirms it has access.
+
+4️⃣  **Set Your Prices**
+   - Finally, the bot will ask you to set your subscription prices. You need to send them in a specific format, with each plan on a new line.
+   - *Example:*
+     \`30 days 100 rs\`
+     \`90 days 250 rs\`
+     \`365 days 800 rs\`
+
+✅ That's it! The bot will confirm and give you a unique link (e.g., \`t.me/YourBotName?start=AbCd123\`). Share this link with your users!`,
+            
+            dashboard: `*📊 Understanding Your Financial Dashboard*
+
+Your dashboard (\`/dashboard\`) is your complete financial overview. Here's what each term means:
+
+📈 *Total Revenue:*
+   - This is the total gross amount of money generated from all sales on your channels, *before* any deductions.
+
+➖ *Service Charge (${process.env.PLATFORM_COMMISSION_PERCENT}%):*
+   - This is our platform fee for providing the bot, payment system, security, and support. It is automatically calculated based on your Total Revenue.
+
+💰 *Gross Earnings:*
+   - This is your total earning *after* the service charge is deducted from the Total Revenue.
+   - The calculation is: \`(Total Revenue - Service Charge)\`.
+
+💸 *Total Paid Out:*
+   - This is the total amount of money you have successfully withdrawn to your bank account so far.
+
+✅ **Net Balance (Withdrawable):**
+   - This is the most important number. This is the actual money currently in your wallet that is ready to be withdrawn.
+   - The calculation is: \`(Gross Earnings - Total Paid Out)\`.`,
+            
+            managingChannels: `*📺 Managing Your Channels*
+
+You have full control over your connected channels.
+
+- Use the \`/mychannels\` command to see a list of all channels you've connected.
+- For each channel, you'll see a "⚙️ Manage" button. Clicking it gives you these powerful options:
+
+✏️ *Edit Plans:*
+   - Allows you to change the price or duration of your subscription plans at any time.
+
+🔗 *Get Link:*
+   - If you ever lose the special subscriber link for a channel, use this button to get it again.
+
+🗑️ *Remove Channel:*
+   - This will permanently delete the channel from our platform.
+   - **Important:** New subscriptions will stop immediately. However, your existing subscribers will remain in the channel until their plan expires. This action cannot be undone.`,
+            
+            withdrawals: `*💸 The Withdrawal Process*
+
+You can request a withdrawal of your earnings anytime your "Net Balance" is above the minimum limit (₹${process.env.MINIMUM_WITHDRAWAL_AMOUNT}).
+
+1️⃣  **Start the Request**
+   - Use the \`/withdraw\` command or go to your dashboard and click "💸 Request Withdrawal".
+
+2️⃣  **Provide UPI ID**
+   - The bot will ask for the UPI ID where you want to receive the money (e.g., \`yourname@oksbi\`). Please enter it carefully.
+
+3️⃣  **Final Confirmation**
+   - The bot will show you the exact amount to be withdrawn and your UPI ID, and ask for a final confirmation.
+
+4️⃣  **Processing**
+   - Once you confirm, your request is sent to the admin. The amount is immediately deducted from your wallet and marked as "pending".
+   - The admin will manually process the payment to your UPI ID and approve the request in the system. This usually takes up to 24 hours.
+
+You can check the status of all your past and pending requests in your dashboard under "💸 Withdrawal History".`
         }
     },
     hi: {
         HELP_TEXTS: {
-            main: "सहायता केंद्र में आपका स्वागत है! कृपया नीचे एक विषय चुनें।",
-            gettingStarted: `*🚀 शुरुआत करें: अपना चैनल जोड़ें*\n\n1️⃣ \`/addchannel\` कमांड का उपयोग करें।\n2️⃣ बॉट को अपने चैनल में **एडमिन** बनाएं।\n3️⃣ उस चैनल से कोई भी संदेश बॉट को **फॉरवर्ड** करें।\n4️⃣ अपनी सदस्यता की कीमतें सेट करें (जैसे, \`30 दिन 100 रुपये\`)।\n\nबस! बॉट आपको साझा करने के लिए एक यूनिक लिंक देगा।`,
-            dashboard: `*📊 अपने डैशबोर्ड को समझें*\n\n📈 *कुल राजस्व:* सभी बिक्री से उत्पन्न कुल राशि।\n➖ *सेवा शुल्क:* हमारा प्लेटफ़ॉर्म शुल्क (${process.env.PLATFORM_COMMISSION_PERCENT}%)।\n💰 *सकल कमाई:* सेवा शुल्क के बाद आपकी कमाई।\n💸 *कुल भुगतान:* वह पैसा जो आप सफलतापूर्वक निकाल चुके हैं।\n✅ **नेट बैलेंस:** आपके वॉलेट में वह पैसा जो निकालने के लिए तैयार है।`,
-            managingChannels: `*📺 अपने चैनलों का प्रबंधन*\n\nअपने जुड़े हुए चैनलों को देखने के लिए \`/mychannels\` का उपयोग करें। "⚙️ प्रबंधित करें" बटन आपको ये विकल्प देता है:\n\n- *प्लान संपादित करें:* कीमतें बदलें।\n- *लिंक प्राप्त करें:* सब्सक्राइबर लिंक फिर से प्राप्त करें।\n- *चैनल हटाएं:* प्लेटफ़ॉर्म से चैनल हटाएं।`,
-            withdrawals: `*💸 निकासी प्रक्रिया*\n\n1️⃣ जब आपका बैलेंस ₹${process.env.MINIMUM_WITHDRAWAL_AMOUNT} से ऊपर हो तो \`/withdraw\` कमांड का उपयोग करें।\n2️⃣ अपनी UPI ID प्रदान करें।\n3️⃣ अनुरोध की पुष्टि करें।\n4️⃣ एडमिन 24 घंटे के भीतर भुगतान की प्रक्रिया करेगा।`
+            main: "सहायता केंद्र में आपका स्वागत है! मैं आपकी मदद करने के लिए यहाँ हूँ। कृपया नीचे एक विषय चुनें।",
+            gettingStarted: `*🚀 शुरुआत करें: अपना चैनल कैसे जोड़ें*
+
+अपने चैनल को हमारे प्लेटफॉर्म से जोड़ने और कमाई शुरू करने के लिए यह एक सरल 3-चरणीय प्रक्रिया है।
+
+1️⃣  **प्रक्रिया शुरू करें**
+   - \`/addchannel\` कमांड का उपयोग करें या मुख्य मेनू (\`/start\`) पर जाएं और "➕ नया चैनल जोड़ें" पर क्लिक करें।
+
+2️⃣  **एडमिन अनुमतियां दें**
+   - बॉट आपसे इसे अपने प्रीमियम चैनल में **एडमिन** बनाने के लिए कहेगा।
+   - अपने चैनल की सेटिंग्स -> एडमिनिस्ट्रेटर -> एडमिन जोड़ें पर जाएं, और बॉट को जोड़ें। कृपया इसे "लिंक के माध्यम से उपयोगकर्ताओं को आमंत्रित करें" की अनुमति दें।
+
+3️⃣  **एक संदेश फॉरवर्ड करें**
+   - एक बार जब बॉट एडमिन बन जाए, तो उस चैनल से **कोई भी संदेश** बॉट को फॉरवर्ड करें। इसी तरह बॉट पुष्टि करता है कि उसके पास एक्सेस है।
+
+4️⃣  **अपनी कीमतें निर्धारित करें**
+   - अंत में, बॉट आपसे अपनी सदस्यता की कीमतें निर्धारित करने के लिए कहेगा। आपको उन्हें एक विशिष्ट प्रारूप में भेजना होगा, प्रत्येक योजना एक नई लाइन पर।
+   - *उदाहरण:*
+     \`30 दिन 100 रुपये\`
+     \`90 दिन 250 रुपये\`
+     \`365 दिन 800 रुपये\`
+
+✅ बस! बॉट पुष्टि करेगा और आपको अपने उपयोगकर्ताओं के साथ साझा करने के लिए एक यूनिक लिंक (जैसे, \`t.me/YourBotName?start=AbCd123\`) देगा।`,
+            
+            dashboard: `*📊 अपने वित्तीय डैशबोर्ड को समझें*
+
+आपका डैशबोर्ड (\`/dashboard\`) आपका संपूर्ण वित्तीय अवलोकन है। यहाँ प्रत्येक शब्द का अर्थ है:
+
+📈 *कुल राजस्व:*
+   - यह आपके चैनलों पर सभी बिक्री से उत्पन्न कुल सकल राशि है, किसी भी कटौती से *पहले*।
+
+➖ *सेवा शुल्क (${process.env.PLATFORM_COMMISSION_PERCENT}%):*
+   - यह बॉट, भुगतान प्रणाली, सुरक्षा और सहायता प्रदान करने के लिए हमारा प्लेटफ़ॉर्म शुल्क है। इसकी गणना स्वचालित रूप से आपके कुल राजस्व के आधार पर की जाती है।
+
+💰 *सकल कमाई:*
+   - यह कुल राजस्व से सेवा शुल्क घटाए जाने के *बाद* आपकी कुल कमाई है।
+   - गणना है: \`(कुल राजस्व - सेवा शुल्क)\`।
+
+💸 *कुल भुगतान:*
+   - यह वह कुल राशि है जिसे आपने अब तक सफलतापूर्वक अपने बैंक खाते में निकाला है।
+
+✅ **नेट बैलेंस (निकासी योग्य):**
+   - यह सबसे महत्वपूर्ण संख्या है। यह वर्तमान में आपके वॉलेट में वास्तविक धन है जो निकालने के लिए तैयार है।
+   - गणना है: \`(सकल कमाई - कुल भुगतान)\`।`,
+            
+            managingChannels: `*📺 अपने चैनलों का प्रबंधन*
+
+आपके जुड़े हुए चैनलों पर आपका पूरा नियंत्रण है।
+
+- अपने सभी जुड़े हुए चैनलों की सूची देखने के लिए \`/mychannels\` कमांड का उपयोग करें।
+- प्रत्येक चैनल के लिए, आपको एक "⚙️ प्रबंधित करें" बटन दिखाई देगा। इस पर क्लिक करने से आपको ये शक्तिशाली विकल्प मिलते हैं:
+
+✏️ *प्लान संपादित करें:*
+   - आपको किसी भी समय अपनी सदस्यता योजनाओं की कीमत या अवधि बदलने की अनुमति देता है।
+
+🔗 *लिंक प्राप्त करें:*
+   - यदि आप कभी किसी चैनल के लिए विशेष सब्सक्राइबर लिंक खो देते हैं, तो इसे फिर से प्राप्त करने के लिए इस बटन का उपयोग करें।
+
+🗑️ *चैनल हटाएं:*
+   - यह चैनल को हमारे प्लेटफ़ॉर्म से स्थायी रूप से हटा देगा।
+   - **महत्वपूर्ण:** नई सदस्यताएँ तुरंत बंद हो जाएंगी। हालाँकि, आपके मौजूदा ग्राहक अपनी योजना समाप्त होने तक चैनल में बने रहेंगे। यह क्रिया पूर्ववत नहीं की जा सकती है।`,
+            
+            withdrawals: `*💸 निकासी प्रक्रिया*
+
+जब भी आपका "नेट बैलेंस" न्यूनतम सीमा (₹${process.env.MINIMUM_WITHDRAWAL_AMOUNT}) से ऊपर हो, आप अपनी कमाई की निकासी का अनुरोध कर सकते हैं।
+
+1️⃣  **अनुरोध शुरू करें**
+   - \`/withdraw\` कमांड का उपयोग करें या अपने डैशबोर्ड पर जाएं और "💸 निकासी का अनुरोध करें" पर क्लिक करें।
+
+2️⃣  **UPI ID प्रदान करें**
+   - बॉट उस UPI ID के लिए पूछेगा जहां आप पैसा प्राप्त करना चाहते हैं (जैसे, \`yourname@oksbi\`)। कृपया इसे ध्यान से दर्ज करें।
+
+3️⃣  **अंतिम पुष्टि**
+   - बॉट आपको निकाली जाने वाली सटीक राशि और आपकी UPI ID दिखाएगा, और अंतिम पुष्टि के लिए पूछेगा।
+
+4️⃣  **प्रसंस्करण**
+   - एक बार जब आप पुष्टि कर देते हैं, तो आपका अनुरोध एडमिन को भेज दिया जाता है। राशि तुरंत आपके वॉलेट से काट ली जाती है और "लंबित" के रूप में चिह्नित हो जाती है।
+   - एडमिन मैन्युअल रूप से आपकी UPI ID पर भुगतान की प्रक्रिया करेगा और सिस्टम में अनुरोध को मंजूरी देगा। इसमें आमतौर पर 24 घंटे तक लगते हैं।
+
+आप अपने डैशबोर्ड में "💸 निकासी इतिहास" के तहत अपने सभी पिछले और लंबित अनुरोधों की स्थिति की जांच कर सकते हैं।`
         }
     }
 };
 
-async function handleOwnerMessage(bot, msg) { /* ... (code from previous full answer) ... */ }
-async function handleOwnerCallback(bot, cbq) { /* ... (code from previous full answer) ... */ }
-// ... (all other functions)
+// ... (Rest of the file is the same as the previous "Help Center" version. I'm providing it in full below for safety)
 
-module.exports = { handleOwnerMessage, handleOwnerCallback };
-
-// For safety, providing the full, correct file content
 async function handleOwnerMessage(bot, msg) {
     const fromId = msg.from.id.toString();
     const text = msg.text || "";
-
     let owner = await Owner.findOne({ telegram_id: fromId });
     if (!owner) {
         owner = await Owner.create({ telegram_id: fromId, first_name: msg.from.first_name, username: msg.from.username });
     }
-    
     if (owner.is_banned) {
         return bot.sendMessage(fromId, `❌ Your account is currently banned. Please contact support: @${process.env.SUPER_ADMIN_USERNAME}`);
     }
-
     const state = userStates[fromId];
     if (state && state.awaiting) {
         if (state.awaiting === 'upi_id') await handleUpiInput(bot, msg, owner);
@@ -55,7 +198,6 @@ async function handleOwnerMessage(bot, msg) {
         else if (state.awaiting === 'edit_plans') await handlePlansInput(bot, msg, owner, true);
         return;
     }
-
     switch (text) {
         case '/start': await showMainMenu(bot, msg.chat.id, owner); break;
         case '/addchannel': await startAddChannelFlow(bot, msg.chat.id, fromId); break;
@@ -66,9 +208,9 @@ async function handleOwnerMessage(bot, msg) {
         default: await showMainMenu(bot, msg.chat.id, owner, `I didn't understand. Here are the options:`);
     }
 }
-async function handleOwnerCallback(bot, cbq) { const fromId = cbq.from.id.toString(); const chatId = cbq.message.chat.id; const messageId = cbq.message.message_id; const data = cbq.data; const owner = await Owner.findOne({ telegram_id: fromId }); await bot.answerCallbackQuery(cbq.id); const parts = data.split('_'); const command = parts[1]; const objectId = parts[2]; switch (command) { case 'mainmenu': await showMainMenu(bot, chatId, owner, "Welcome Back!", messageId); break; case 'add': await startAddChannelFlow(bot, chatId, fromId); break; case 'dashboard': await showDashboard(bot, chatId, owner, messageId); break; case 'withdraw': await startWithdrawalFlow(bot, chatId, owner); break; case 'mychannels': await listMyChannels(bot, chatId, owner, messageId); break; case 'help': await showHelpMenu(bot, chatId, owner, messageId); break; case 'setlang': owner.language = objectId; await owner.save(); await showMainMenu(bot, chatId, owner, "Language updated!", messageId); break; case 'helpsection': const lang = owner.language || 'en'; await bot.editMessageText(LANGUAGES[lang].HELP_TEXTS[objectId], { chat_id: chatId, message_id: messageId, parse_mode: 'Markdown', reply_markup: { inline_keyboard: [[{ text: "⬅️ Back", callback_data: "owner_help" }]] } }); break; case 'transactions': await showTransactionHistory(bot, chatId, owner, messageId); break; case 'withdrawalhistory': await showWithdrawalHistory(bot, chatId, owner, messageId); break; case 'channelstats': await showChannelStats(bot, chatId, owner, messageId); break; case 'managechannel': await showChannelManagementMenu(bot, chatId, objectId, messageId); break; case 'getlink': await sendChannelLink(bot, chatId, objectId); break; case 'editplans': userStates[fromId] = { awaiting: 'edit_plans', channel_db_id: objectId }; await bot.sendMessage(chatId, `Send the new plans in the format:\n\n\`30 days 100 rs\``, { parse_mode: 'Markdown' }); break; case 'removechannel': await confirmRemoveChannel(bot, chatId, objectId, messageId); break; case 'confirmremove': await removeChannel(bot, chatId, objectId, messageId); break; case 'withdrawconfirm': await handleWithdrawConfirm(bot, cbq, owner); break; case 'withdrawcancel': delete userStates[fromId]; await bot.editMessageText("Withdrawal request cancelled.", { chat_id: chatId, message_id: messageId }); break; } }
-async function showMainMenu(bot, chatId, owner, text = "Welcome, Channel Owner!", messageId = null) { const lang = owner.language || 'en'; const otherLang = lang === 'en' ? 'hi' : 'en'; const langText = lang === 'en' ? '🇮🇳 Switch to Hindi' : '🇬🇧 Switch to English'; const keyboard = { inline_keyboard: [ [{ text: "📊 My Dashboard", callback_data: "owner_dashboard" }, { text: "➕ Add a New Channel", callback_data: "owner_add" }], [{ text: "📺 My Channels", callback_data: "owner_mychannels" }, { text: "❓ Help & Support", callback_data: "owner_help" }], [{ text: langText, callback_data: `owner_setlang_${otherLang}`}] ]}; if (messageId) await bot.editMessageText(text, { chat_id: chatId, message_id: messageId, reply_markup: keyboard }); else await bot.sendMessage(chatId, text, { reply_markup: keyboard }); }
-async function showHelpMenu(bot, chatId, owner, messageId = null) { const lang = owner.language || 'en'; const help = LANGUAGES[lang].HELP_TEXTS; const keyboard = { inline_keyboard: [ [{ text: "🚀 Getting Started", callback_data: "owner_helpsection_gettingStarted" }], [{ text: "📊 Understanding Dashboard", callback_data: "owner_helpsection_dashboard" }], [{ text: "📺 Managing Channels", callback_data: "owner_helpsection_managingChannels" }], [{ text: "💸 Withdrawal Process", callback_data: "owner_helpsection_withdrawals" }], [{ text: "⬅️ Back to Main Menu", callback_data: "owner_mainmenu" }] ]}; if(messageId) await bot.editMessageText(help.main, { chat_id: chatId, message_id: messageId, reply_markup: keyboard }); else await bot.sendMessage(chatId, help.main, { reply_markup: keyboard }); }
+async function handleOwnerCallback(bot, cbq) { const fromId = cbq.from.id.toString(); const chatId = cbq.message.chat.id; const messageId = cbq.message.message_id; const data = cbq.data; const owner = await Owner.findOne({ telegram_id: fromId }); await bot.answerCallbackQuery(cbq.id); const parts = data.split('_'); const command = parts[1]; const objectId = parts[2]; switch (command) { case 'mainmenu': await showMainMenu(bot, chatId, owner, "Welcome Back!", messageId); break; case 'add': await startAddChannelFlow(bot, chatId, fromId); break; case 'dashboard': await showDashboard(bot, chatId, owner, messageId); break; case 'withdraw': await startWithdrawalFlow(bot, chatId, owner); break; case 'mychannels': await listMyChannels(bot, chatId, owner, messageId); break; case 'help': await showHelpMenu(bot, chatId, owner, messageId); break; case 'setlang': owner.language = objectId; await owner.save(); await showHelpMenu(bot, chatId, owner, messageId); break; case 'helpsection': const lang = owner.language || 'en'; await bot.editMessageText(LANGUAGES[lang].HELP_TEXTS[objectId], { chat_id: chatId, message_id: messageId, parse_mode: 'Markdown', reply_markup: { inline_keyboard: [[{ text: "⬅️ Back", callback_data: "owner_help" }]] } }); break; case 'transactions': await showTransactionHistory(bot, chatId, owner, messageId); break; case 'withdrawalhistory': await showWithdrawalHistory(bot, chatId, owner, messageId); break; case 'channelstats': await showChannelStats(bot, chatId, owner, messageId); break; case 'managechannel': await showChannelManagementMenu(bot, chatId, objectId, messageId); break; case 'getlink': await sendChannelLink(bot, chatId, objectId); break; case 'editplans': userStates[fromId] = { awaiting: 'edit_plans', channel_db_id: objectId }; await bot.sendMessage(chatId, `Send the new plans in the format:\n\n\`30 days 100 rs\``, { parse_mode: 'Markdown' }); break; case 'removechannel': await confirmRemoveChannel(bot, chatId, objectId, messageId); break; case 'confirmremove': await removeChannel(bot, chatId, objectId, messageId); break; case 'withdrawconfirm': await handleWithdrawConfirm(bot, cbq, owner); break; case 'withdrawcancel': delete userStates[fromId]; await bot.editMessageText("Withdrawal request cancelled.", { chat_id: chatId, message_id: messageId }); break; } }
+async function showMainMenu(bot, chatId, owner, text = "Welcome, Channel Owner!", messageId = null) { const lang = owner.language || 'en'; const otherLang = lang === 'en' ? 'hi' : 'en'; const langText = lang === 'en' ? '🇮🇳 हिंदी में स्विच करें' : '🇬🇧 Switch to English'; const keyboard = { inline_keyboard: [ [{ text: "📊 My Dashboard", callback_data: "owner_dashboard" }, { text: "➕ Add a New Channel", callback_data: "owner_add" }], [{ text: "📺 My Channels", callback_data: "owner_mychannels" }, { text: "❓ Help & Support", callback_data: "owner_help" }] ]}; if (messageId) await bot.editMessageText(text, { chat_id: chatId, message_id: messageId, reply_markup: keyboard }); else await bot.sendMessage(chatId, text, { reply_markup: keyboard }); }
+async function showHelpMenu(bot, chatId, owner, messageId = null) { const lang = owner.language || 'en'; const otherLang = lang === 'en' ? 'hi' : 'en'; const langText = lang === 'en' ? '🇮🇳 हिंदी में स्विच करें' : '🇬🇧 Switch to English'; const help = LANGUAGES[lang].HELP_TEXTS; const keyboard = { inline_keyboard: [ [{ text: "🚀 Getting Started", callback_data: "owner_helpsection_gettingStarted" }], [{ text: "📊 Understanding Dashboard", callback_data: "owner_helpsection_dashboard" }], [{ text: "📺 Managing Channels", callback_data: "owner_helpsection_managingChannels" }], [{ text: "💸 Withdrawal Process", callback_data: "owner_helpsection_withdrawals" }], [{ text: langText, callback_data: `owner_setlang_${otherLang}`}], [{ text: "⬅️ Back to Main Menu", callback_data: "owner_mainmenu" }] ]}; if(messageId) await bot.editMessageText(help.main, { chat_id: chatId, message_id: messageId, parse_mode: 'Markdown', reply_markup: keyboard }); else await bot.sendMessage(chatId, help.main, { parse_mode: 'Markdown', reply_markup: keyboard }); }
 async function handleChannelForward(bot, msg, owner) { const fromId = owner.telegram_id; if (msg.forward_from_chat) { const channelId = msg.forward_from_chat.id.toString(); const channelName = msg.forward_from_chat.title; try { const botMember = await bot.getChatMember(channelId, (await bot.getMe()).id); if (botMember.status !== 'administrator') { await bot.sendMessage(fromId, `❌ Bot is not an admin in "${channelName}". Please make the bot an admin and try again.`); delete userStates[fromId]; return; } userStates[fromId] = { awaiting: 'plans', channel_id: channelId, channel_name: channelName }; await bot.sendMessage(fromId, `✅ Great! Bot is an admin in "${channelName}".\n\nNow, send subscription plans in this format:\n\n\`30 days 100 rs\`\n\`90 days 250 rs\``, { parse_mode: 'Markdown' }); } catch (error) { await bot.sendMessage(fromId, `❌ An error occurred. Please make sure the bot is an admin in your channel and try again.`); delete userStates[fromId]; } } else { await bot.sendMessage(fromId, `That was not a forwarded message. Please forward a message from your channel.`); }};
 async function handlePlansInput(bot, msg, owner, isEdit = false) { const fromId = owner.telegram_id; const state = userStates[fromId]; const lines = msg.text.split('\n'); const plans = []; let parseError = false; for (const line of lines) { const parts = line.match(/(\d+)\s+days?\s+(\d+)\s+rs?/i); if (parts) { plans.push({ days: parseInt(parts[1]), price: parseInt(parts[2]) }); } else if (line.trim() !== '') { parseError = true; break; } } if (parseError || plans.length === 0) { await bot.sendMessage(fromId, `❌ Invalid format. Please use the format like: \`30 days 100 rs\`. Try again.`); } else { if (isEdit) { await ManagedChannel.findByIdAndUpdate(state.channel_db_id, { plans: plans }); await bot.sendMessage(fromId, `✅ Plans updated successfully!`); } else { const uniqueKey = nanoid(8); await ManagedChannel.create({ owner_id: owner._id, channel_id: state.channel_id, channel_name: state.channel_name, unique_start_key: uniqueKey, plans: plans }); const link = `https://t.me/${(await bot.getMe()).username}?start=${uniqueKey}`; await bot.sendMessage(fromId, `✅ Channel Added Successfully!\n\nShare this link with your users:\n\n\`${link}\``, { parse_mode: 'Markdown' }); } delete userStates[fromId]; }};
 async function handleUpiInput(bot, msg, owner) { const fromId = owner.telegram_id; const upiId = msg.text.trim(); const amountToWithdraw = owner.wallet_balance; userStates[fromId] = { awaiting: 'withdraw_confirm', upi_id: upiId, amount: amountToWithdraw }; const confirmationKeyboard = { inline_keyboard: [[{ text: "✅ Yes, Confirm", callback_data: "owner_withdrawconfirm" }, { text: "❌ No, Cancel", callback_data: "owner_withdrawcancel" }]] }; await bot.sendMessage(fromId, `Please confirm:\n\nYou want to withdraw **₹${amountToWithdraw.toFixed(2)}** to **${upiId}**?`, { parse_mode: 'Markdown', reply_markup: confirmationKeyboard }); };
