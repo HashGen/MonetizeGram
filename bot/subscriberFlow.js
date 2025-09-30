@@ -36,7 +36,7 @@ module.exports = {
         // Case 2: A brand new user types /start
         } else {
             const welcomeText = `
-👋 *_Welcome to Monetize Gram Bot!_*
+👋 *Welcome to Make Paid Bot!*
 
 _The Ultimate Platform To Monetize Your Telegram Channel Or Join Exclusive Premium Content._
 
