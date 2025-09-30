@@ -5,202 +5,180 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Super Admin Dashboard</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" integrity="sha512-iecdLmaskl7CVkqkXNQ/ZH/XLlvWZOJyj7Yy7tcenmpD1ypASozpmT/E0iPtmFIB46ZmdtAc9eNBvH0H/ZpiBw==" crossorigin="anonymous" referrerpolicy="no-referrer" />
     <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
         body { font-family: 'Inter', sans-serif; }
-        .spinner { border: 4px solid rgba(0, 0, 0, .1); width: 36px; height: 36px; border-radius: 50%; border-left-color: #4f46e5; animation: spin 1s ease infinite; }
+        .spinner { border: 4px solid rgba(0, 0, 0, .1); width: 24px; height: 24px; border-radius: 50%; border-left-color: #fff; animation: spin 1s ease infinite; }
         @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        .sidebar-link.active { background-color: #4f46e5; color: white; }
     </style>
 </head>
-<body class="bg-gray-100 text-gray-800">
+<body class="bg-slate-100">
 
-    <div class="container mx-auto p-4 md:p-8 space-y-8">
-        
-        <!-- HEADER: Title, Login Form, and Logout Button -->
-        <div id="header-section">
-            <div class="flex justify-between items-center mb-4">
-                <h1 class="text-3xl font-bold text-gray-900">Super Admin Dashboard</h1>
-                <button id="logout-btn" class="hidden bg-red-500 text-white px-4 py-2 rounded-md hover:bg-red-600">Log Out</button>
-            </div>
-            <div id="login-section">
-                <label for="admin-secret" class="block text-sm font-medium text-gray-700">Admin Secret Key:</label>
-                <input type="password" id="admin-secret" class="mt-1 block w-full md:w-1/3 px-3 py-2 border border-gray-300 rounded-md shadow-sm" placeholder="Enter your secret key to load data">
+    <!-- LOGIN SCREEN -->
+    <div id="login-screen" class="flex items-center justify-center min-h-screen bg-slate-200">
+        <div class="bg-white p-8 rounded-xl shadow-lg w-full max-w-sm">
+            <h1 class="text-2xl font-bold mb-6 text-slate-800 text-center">Admin Login</h1>
+            <div class="space-y-4">
+                <div>
+                    <label for="admin-secret" class="block text-sm font-medium text-slate-700">Admin Secret Key:</label>
+                    <input type="password" id="admin-secret" class="mt-1 block w-full px-3 py-2 border border-slate-300 rounded-md shadow-sm" placeholder="••••••••••">
+                </div>
+                <button id="login-btn" class="w-full flex items-center justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700">
+                    <span id="login-btn-text">Log In</span>
+                    <div id="login-spinner" class="spinner hidden"></div>
+                </button>
+                <p id="login-error" class="text-red-500 text-sm text-center"></p>
             </div>
         </div>
+    </div>
 
-        <!-- MAIN CONTENT: This will be shown after login -->
-        <div id="main-content" class="hidden space-y-8">
-            <!-- Stats Section -->
-            <div id="stats-section" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-                <div class="bg-white p-6 rounded-lg shadow-md"><h3 class="text-gray-500">Total Owners</h3><p id="stats-owners" class="text-3xl font-bold">0</p></div>
-                <div class="bg-white p-6 rounded-lg shadow-md"><h3 class="text-gray-500">Total Channels</h3><p id="stats-channels" class="text-3xl font-bold">0</p></div>
-                <div class="bg-white p-6 rounded-lg shadow-md"><h3 class="text-gray-500">Total Revenue</h3><p id="stats-revenue" class="text-3xl font-bold">₹0</p></div>
-                <div class="bg-white p-6 rounded-lg shadow-md"><h3 class="text-gray-500">My Commission</h3><p id="stats-commission" class="text-3xl font-bold">₹0</p></div>
-            </div>
+    <!-- DASHBOARD SCREEN -->
+    <div id="dashboard-screen" class="hidden">
+        <div class="flex h-screen bg-slate-200">
+            <!-- Sidebar -->
+            <aside class="w-64 bg-slate-800 text-slate-200 flex flex-col">
+                <div class="p-4 text-2xl font-bold border-b border-slate-700">APCMB Admin</div>
+                <nav class="flex-1 p-2 space-y-1">
+                    <a href="#" data-view="dashboard" class="sidebar-link active flex items-center gap-3 px-4 py-2 rounded-md hover:bg-slate-700"><i class="fas fa-tachometer-alt fa-fw"></i> Dashboard</a>
+                    <a href="#" data-view="withdrawals" class="sidebar-link flex items-center gap-3 px-4 py-2 rounded-md hover:bg-slate-700"><i class="fas fa-hand-holding-usd fa-fw"></i> Withdrawals</a>
+                    <a href="#" data-view="owners" class="sidebar-link flex items-center gap-3 px-4 py-2 rounded-md hover:bg-slate-700"><i class="fas fa-users fa-fw"></i> Owners</a>
+                </nav>
+            </aside>
 
-            <!-- Withdrawal Requests Section -->
-            <div id="withdrawals-section" class="bg-white p-6 rounded-lg shadow-md">
-                <div class="flex justify-between items-center mb-4">
-                    <h2 class="text-2xl font-bold">Pending Withdrawal Requests</h2>
-                    <button id="refresh-btn" class="bg-indigo-600 text-white px-4 py-2 rounded-md hover:bg-indigo-700">Refresh</button>
+            <!-- Main Content -->
+            <main class="flex-1 flex flex-col overflow-hidden">
+                <header class="bg-white shadow-md p-4 flex justify-end">
+                    <button id="logout-btn" class="bg-red-500 text-white px-4 py-2 rounded-md hover:bg-red-600 text-sm font-medium">Log Out</button>
+                </header>
+                <div class="flex-1 p-6 overflow-y-auto">
+                    <!-- Dashboard View -->
+                    <div id="dashboard-view" class="view space-y-6">
+                        <div id="stats-section" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                            <div class="bg-white p-6 rounded-lg shadow"><h3 class="text-slate-500">Total Owners</h3><p id="stats-owners" class="text-3xl font-bold">0</p></div>
+                            <div class="bg-white p-6 rounded-lg shadow"><h3 class="text-slate-500">Total Channels</h3><p id="stats-channels" class="text-3xl font-bold">0</p></div>
+                            <div class="bg-white p-6 rounded-lg shadow"><h3 class="text-slate-500">Total Revenue</h3><p id="stats-revenue" class="text-3xl font-bold">₹0</p></div>
+                            <div class="bg-white p-6 rounded-lg shadow"><h3 class="text-slate-500">My Commission</h3><p id="stats-commission" class="text-3xl font-bold">₹0</p></div>
+                        </div>
+                    </div>
+                    <!-- Withdrawals View -->
+                    <div id="withdrawals-view" class="view hidden">
+                        <div class="bg-white p-6 rounded-lg shadow">
+                            <h2 class="text-2xl font-bold mb-4">Pending Withdrawal Requests</h2>
+                            <div class="overflow-x-auto"><table class="min-w-full divide-y divide-slate-200"><thead class="bg-slate-50"><tr><th class="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase">Owner</th><th class="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase">Amount</th><th class="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase">UPI ID</th><th class="px-6 py-3 text-center text-xs font-medium text-slate-500 uppercase">Actions</th></tr></thead><tbody id="withdrawals-table-body" class="bg-white divide-y divide-slate-200"></tbody></table></div>
+                        </div>
+                    </div>
+                    <!-- Owners View -->
+                    <div id="owners-view" class="view hidden">
+                        <div class="bg-white p-6 rounded-lg shadow">
+                            <h2 class="text-2xl font-bold mb-4">All Channel Owners</h2>
+                            <div class="overflow-x-auto"><table class="min-w-full divide-y divide-slate-200"><thead class="bg-slate-50"><tr><th class="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase">Owner Details</th><th class="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase">Wallet Balance</th><th class="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase">Total Earnings</th><th class="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase">Registered On</th></tr></thead><tbody id="owners-table-body" class="bg-white divide-y divide-slate-200"></tbody></table></div>
+                        </div>
+                    </div>
                 </div>
-                <div id="loader-withdrawals" class="flex justify-center my-8 hidden"><div class="spinner"></div></div>
-                <p id="withdrawals-message" class="text-center text-gray-500 my-8"></p>
-                <div class="overflow-x-auto">
-                    <table class="min-w-full divide-y divide-gray-200"><thead class="bg-gray-50"><tr><th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Owner</th><th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Amount</th><th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">UPI ID</th><th class="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase">Actions</th></tr></thead><tbody id="withdrawals-table-body" class="bg-white divide-y divide-gray-200"></tbody></table>
-                </div>
-            </div>
-            
-            <!-- Owners List Section -->
-            <div id="owners-section" class="bg-white p-6 rounded-lg shadow-md">
-                <h2 class="text-2xl font-bold mb-4">All Channel Owners</h2>
-                <div id="loader-owners" class="flex justify-center my-8 hidden"><div class="spinner"></div></div>
-                <p id="owners-message" class="text-center text-gray-500 my-8"></p>
-                 <div class="overflow-x-auto">
-                    <table class="min-w-full divide-y divide-gray-200"><thead class="bg-gray-50"><tr><th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Owner Details</th><th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Wallet Balance</th><th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Total Earnings</th><th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Registered On</th></tr></thead><tbody id="owners-table-body" class="bg-white divide-y divide-gray-200"></tbody></table>
-                </div>
-            </div>
+            </main>
         </div>
     </div>
 
     <script>
         document.addEventListener('DOMContentLoaded', () => {
+            // --- ELEMENTS ---
+            const loginScreen = document.getElementById('login-screen');
+            const dashboardScreen = document.getElementById('dashboard-screen');
             const secretInput = document.getElementById('admin-secret');
-            const loginSection = document.getElementById('login-section');
-            const mainContent = document.getElementById('main-content');
+            const loginBtn = document.getElementById('login-btn');
+            const loginBtnText = document.getElementById('login-btn-text');
+            const loginSpinner = document.getElementById('login-spinner');
+            const loginError = document.getElementById('login-error');
             const logoutBtn = document.getElementById('logout-btn');
-            const refreshBtn = document.getElementById('refresh-btn');
+            const sidebarLinks = document.querySelectorAll('.sidebar-link');
+            const views = document.querySelectorAll('.view');
+            
             let adminSecret = '';
 
-            // --- API HELPER FUNCTIONS ---
+            // --- API HELPERS ---
             const fetchData = async (url) => { /* ... no change ... */ };
             const postData = async (url) => { /* ... no change ... */ };
 
-            // --- DATA LOADING FUNCTIONS ---
+            // --- DATA LOADERS ---
             const loadStats = async () => { /* ... no change ... */ };
             const loadWithdrawals = async () => { /* ... no change ... */ };
             const loadOwners = async () => { /* ... no change ... */ };
-            const loadAllData = async () => { /* ... no change ... */ };
-            
-            // --- NEW LOGIN & UI FUNCTIONS ---
+
+            // --- UI LOGIC ---
             const showDashboard = () => {
-                loginSection.classList.add('hidden');
-                mainContent.classList.remove('hidden');
-                logoutBtn.classList.remove('hidden');
-                loadAllData();
+                loginScreen.classList.add('hidden');
+                dashboardScreen.classList.remove('hidden');
+                loadStats(); loadWithdrawals(); loadOwners();
             };
             
             const showLogin = () => {
-                loginSection.classList.remove('hidden');
-                mainContent.classList.add('hidden');
-                logoutBtn.classList.add('hidden');
+                loginScreen.classList.remove('hidden');
+                dashboardScreen.classList.add('hidden');
             };
 
-            // --- EVENT LISTENERS ---
-            secretInput.addEventListener('change', (e) => {
-                const enteredSecret = e.target.value;
-                if (enteredSecret) {
-                    adminSecret = enteredSecret;
-                    // Test the secret by trying to fetch stats
-                    loadStats().then(() => {
-                        // If successful, save to localStorage and show dashboard
-                        localStorage.setItem('adminSecretKey', enteredSecret);
-                        showDashboard();
-                    }).catch(err => {
-                        alert("Invalid Secret Key!");
-                        e.target.value = '';
-                    });
-                }
-            });
+            const handleLogin = async () => {
+                const enteredSecret = secretInput.value;
+                if (!enteredSecret) { loginError.textContent = 'Please enter a secret key.'; return; }
 
-            logoutBtn.addEventListener('click', () => {
+                loginError.textContent = '';
+                loginBtnText.classList.add('hidden');
+                loginSpinner.classList.remove('hidden');
+                loginBtn.disabled = true;
+                
+                adminSecret = enteredSecret;
+                try {
+                    await fetchData('/api/super/stats'); // Test the secret key
+                    localStorage.setItem('adminSecretKey', enteredSecret);
+                    showDashboard();
+                } catch (err) {
+                    loginError.textContent = "Invalid Secret Key. Please try again.";
+                } finally {
+                    loginBtnText.classList.remove('hidden');
+                    loginSpinner.classList.add('hidden');
+                    loginBtn.disabled = false;
+                }
+            };
+
+            const handleLogout = () => {
                 localStorage.removeItem('adminSecretKey');
                 adminSecret = '';
+                secretInput.value = '';
                 showLogin();
-                // Optional: reload the page for a cleaner state
-                // window.location.reload(); 
-            });
+            };
 
-            refreshBtn.addEventListener('click', loadAllData);
-            document.getElementById('withdrawals-table-body').addEventListener('click', (e) => { /* handleActionClick logic here */ });
+            const handleNavigation = (e) => {
+                e.preventDefault();
+                const viewId = e.currentTarget.dataset.view;
+                
+                views.forEach(view => view.classList.add('hidden'));
+                document.getElementById(`${viewId}-view`).classList.remove('hidden');
+                
+                sidebarLinks.forEach(link => link.classList.remove('active'));
+                e.currentTarget.classList.add('active');
+            };
+            
+            // --- EVENT LISTENERS ---
+            loginBtn.addEventListener('click', handleLogin);
+            secretInput.addEventListener('keypress', (e) => { if(e.key === 'Enter') handleLogin(); });
+            logoutBtn.addEventListener('click', handleLogout);
+            sidebarLinks.forEach(link => link.addEventListener('click', handleNavigation));
 
             // --- ON PAGE LOAD ---
             const savedSecret = localStorage.getItem('adminSecretKey');
             if (savedSecret) {
                 adminSecret = savedSecret;
-                secretInput.value = savedSecret; // Optional: fill the input
                 showDashboard();
             }
 
-            // --- Copy-paste the unchanged functions here ---
-            fetchData = async (url) => {
-                const response = await fetch(`${url}?secret=${adminSecret}`);
-                if (!response.ok) throw new Error(await response.text() || `HTTP error! status: ${response.status}`);
-                return response.json();
-            };
-            postData = async (url) => {
-                const response = await fetch(`${url}?secret=${adminSecret}`, { method: 'POST' });
-                if (!response.ok) throw new Error(await response.text() || `HTTP error! status: ${response.status}`);
-                return response.json();
-            };
-            loadStats = async () => {
-                const stats = await fetchData('/api/super/stats');
-                document.getElementById('stats-owners').textContent = stats.totalOwners;
-                document.getElementById('stats-channels').textContent = stats.totalChannels;
-                document.getElementById('stats-revenue').textContent = `₹${(stats.totalRevenue || 0).toFixed(2)}`;
-                document.getElementById('stats-commission').textContent = `₹${(stats.totalCommission || 0).toFixed(2)}`;
-            };
-            loadWithdrawals = async () => {
-                const tableBody = document.getElementById('withdrawals-table-body');
-                const messageEl = document.getElementById('withdrawals-message');
-                tableBody.innerHTML = '';
-                document.getElementById('loader-withdrawals').classList.remove('hidden');
-                messageEl.textContent = '';
-                try {
-                    const requests = await fetchData('/api/super/withdrawals');
-                    if (requests.length === 0) messageEl.textContent = 'No pending withdrawal requests found.';
-                    requests.forEach(req => {
-                        const row = `<tr><td class="px-6 py-4">${req.owner_id.first_name} (${req.owner_id.telegram_id})</td><td class="px-6 py-4 font-bold">₹${req.amount.toFixed(2)}</td><td class="px-6 py-4">${req.upi_id}</td><td class="px-6 py-4 text-center space-x-2"><button data-id="${req._id}" class="approve-btn bg-green-500 text-white px-3 py-1 rounded-md text-sm hover:bg-green-600">Approve</button><button data-id="${req._id}" class="reject-btn bg-red-500 text-white px-3 py-1 rounded-md text-sm hover:bg-red-600">Reject</button></td></tr>`;
-                        tableBody.innerHTML += row;
-                    });
-                } finally {
-                    document.getElementById('loader-withdrawals').classList.add('hidden');
-                }
-            };
-            loadOwners = async () => {
-                const tableBody = document.getElementById('owners-table-body');
-                const messageEl = document.getElementById('owners-message');
-                tableBody.innerHTML = '';
-                document.getElementById('loader-owners').classList.remove('hidden');
-                messageEl.textContent = '';
-                try {
-                    const owners = await fetchData('/api/super/owners');
-                    if (owners.length === 0) messageEl.textContent = 'No owners have registered yet.';
-                    owners.forEach(owner => {
-                        const row = `<tr><td class="px-6 py-4"><div class="font-bold">${owner.first_name || 'N/A'}</div><div class="text-sm text-gray-500">${owner.telegram_id}</div></td><td class="px-6 py-4 font-bold text-green-600">₹${(owner.wallet_balance || 0).toFixed(2)}</td><td class="px-6 py-4">₹${(owner.total_earnings || 0).toFixed(2)}</td><td class="px-6 py-4 text-sm text-gray-500">${new Date(owner.created_at).toLocaleDateString()}</td></tr>`;
-                        tableBody.innerHTML += row;
-                    });
-                } finally {
-                    document.getElementById('loader-owners').classList.add('hidden');
-                }
-            };
-            loadAllData = async () => {
-                await Promise.all([loadStats(), loadWithdrawals(), loadOwners()]);
-            };
-            document.getElementById('withdrawals-table-body').addEventListener('click', async (e) => {
-                const button = e.target.closest('button'); if (!button) return;
-                const id = button.dataset.id; if (!id) return;
-                const action = button.matches('.approve-btn') ? 'approve' : 'reject';
-                if (!confirm(`Are you sure you want to ${action} this request?`)) return;
-                button.disabled = true; const originalText = button.textContent; button.textContent = 'Processing...';
-                try {
-                    await postData(`/api/super/withdrawals/${id}/${action}`);
-                    alert(`Request ${action}d successfully!`);
-                    await loadWithdrawals();
-                } catch (error) {
-                    alert(`Failed to ${action}: ` + error.message);
-                    button.disabled = false; button.textContent = originalText;
-                }
-            });
+            // --- Copy-paste unchanged functions ---
+            fetchData = async (url) => { const r = await fetch(`${url}?secret=${adminSecret}`); if (!r.ok) throw new Error(); return r.json(); };
+            postData = async (url) => { const r = await fetch(`${url}?secret=${adminSecret}`,{method:'POST'}); if (!r.ok) throw new Error(); return r.json(); };
+            loadStats = async () => { const s = await fetchData('/api/super/stats'); document.getElementById('stats-owners').textContent = s.totalOwners; document.getElementById('stats-channels').textContent = s.totalChannels; document.getElementById('stats-revenue').textContent = `₹${(s.totalRevenue || 0).toFixed(2)}`; document.getElementById('stats-commission').textContent = `₹${(s.totalCommission || 0).toFixed(2)}`; };
+            loadWithdrawals = async () => { const t = document.getElementById('withdrawals-table-body'); t.innerHTML=''; const r=await fetchData('/api/super/withdrawals'); if(r.length===0){t.innerHTML=`<tr><td colspan="4" class="text-center p-4 text-slate-500">No pending requests.</td></tr>`} r.forEach(req => {t.innerHTML+=`<tr><td class="px-6 py-4">${req.owner_id.first_name} (${req.owner_id.telegram_id})</td><td class="px-6 py-4 font-bold">₹${req.amount.toFixed(2)}</td><td class="px-6 py-4">${req.upi_id}</td><td class="px-6 py-4 text-center space-x-2"><button data-id="${req._id}" class="approve-btn bg-green-500 text-white px-3 py-1 rounded-md text-sm hover:bg-green-600">Approve</button><button data-id="${req._id}" class="reject-btn bg-red-500 text-white px-3 py-1 rounded-md text-sm hover:bg-red-600">Reject</button></td></tr>`}) };
+            loadOwners = async () => { const t = document.getElementById('owners-table-body'); t.innerHTML=''; const o=await fetchData('/api/super/owners'); if(o.length===0){t.innerHTML=`<tr><td colspan="4" class="text-center p-4 text-slate-500">No owners registered.</td></tr>`} o.forEach(owner => {t.innerHTML+=`<tr><td class="px-6 py-4"><div class="font-bold">${owner.first_name||'N/A'}</div><div class="text-sm text-slate-500">${owner.telegram_id}</div></td><td class="px-6 py-4 font-bold text-green-600">₹${(owner.wallet_balance||0).toFixed(2)}</td><td class="px-6 py-4">₹${(owner.total_earnings||0).toFixed(2)}</td><td class="px-6 py-4 text-sm text-slate-500">${new Date(owner.created_at).toLocaleDateString()}</td></tr>`}) };
+            document.getElementById('withdrawals-table-body').addEventListener('click', async (e) => { const btn=e.target.closest('button'); if(!btn) return; const id=btn.dataset.id; if(!id) return; const action=btn.matches('.approve-btn')?'approve':'reject'; if(!confirm(`Sure to ${action} this?`))return; btn.disabled=true; const txt=btn.textContent; btn.textContent='...'; try{ await postData(`/api/super/withdrawals/${id}/${action}`); alert(`Request ${action}d!`); await loadWithdrawals() } catch(err){ alert(`Failed to ${action}`); btn.disabled=false; btn.textContent=txt; }});
         });
     </script>
 </body>
