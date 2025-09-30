@@ -12,8 +12,8 @@ const PendingPayment = require('./models/pendingPayment.model');
 const Report = require('./models/report.model');
 
 // Bot Logic
-const { handleOwnerMessage, handleOwnerCallback } = require('./bot/ownerFlow');
-const { handleSubscriberMessage, handleSubscriberCallback, initialize } = require('./bot/subscriberFlow');
+const { handleOwnerMessage, handleOwnerCallback, initializeOwnerFlow } = require('./bot/ownerFlow');
+const { handleSubscriberMessage, handleSubscriberCallback, initializeSubscriberFlow } = require('./bot/subscriberFlow');
 
 // Config
 const { PORT, MONGO_URI, BOT_TOKEN, SUPER_ADMIN_ID, SUPER_ADMIN_USERNAME, AUTOMATION_SECRET, PLATFORM_COMMISSION_PERCENT, CRON_SECRET } = process.env;
@@ -27,8 +27,11 @@ const bot = new TelegramBot(BOT_TOKEN, { polling: true });
 const userStates = {}; // The "Diary" is created here
 app.use(express.json()); app.use(express.text()); app.use(express.static('public'));
 
+// --- THIS IS THE FIX ---
 // Pass both bot and userStates to the imported modules
-initialize(bot, userStates);
+initializeSubscriberFlow(bot, userStates);
+initializeOwnerFlow(userStates); // Owner flow also needs the states
+// --- END OF FIX ---
 
 mongoose.connect(MONGO_URI).then(() => console.log('✅ MongoDB Connected!')).catch(err => { console.error('❌ MongoDB Connection Error:', err); process.exit(1); });
 
@@ -43,7 +46,7 @@ async function processPayment(amount, bot, method = "Unknown") { /* ... unchange
 async function checkSubscriptions(bot) { /* ... unchanged ... */ }
 async function deleteOldBannedAccounts() { /* ... unchanged ... */ }
 
-// --- TELEGRAM ROUTER (WITH THE FIX) ---
+// --- TELEGRAM ROUTER ---
 async function handleSuperAdminCommands(bot, msg) { /* ... unchanged ... */ }
 async function handleAdminCallback(bot, cbq) { /* ... unchanged ... */ }
 
@@ -62,18 +65,15 @@ bot.on('message', async (msg) => {
     }
     
     if (text.startsWith('/start ')) {
-        // --- PASS userStates to the function ---
-        return handleSubscriberMessage(bot, msg, userStates);
+        return handleSubscriberMessage(bot, msg);
     }
 
     const owner = await Owner.findOne({ telegram_id: fromId });
     if (owner) {
-        // --- PASS userStates to the function ---
-        return handleOwnerMessage(bot, msg, userStates);
+        return handleOwnerMessage(bot, msg);
     }
     
-    // --- PASS userStates to the function ---
-    return handleSubscriberMessage(bot, msg, userStates);
+    return handleSubscriberMessage(bot, msg);
 });
 
 bot.on('callback_query', async (callbackQuery) => {
@@ -91,8 +91,7 @@ bot.on('callback_query', async (callbackQuery) => {
     if (data.startsWith('sub_')) {
         await handleSubscriberCallback(bot, callbackQuery);
     } else if (data.startsWith('owner_')) {
-        // --- PASS userStates to the function ---
-        await handleOwnerCallback(bot, callbackQuery, userStates);
+        await handleOwnerCallback(bot, callbackQuery);
     }
 });
 
@@ -105,7 +104,7 @@ async function checkSubscriptions(bot) { const now = new Date(); const expiredSu
 async function deleteOldBannedAccounts() { const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000); const result = await Owner.deleteMany({ is_banned: true, banned_at: { $lte: sevenDaysAgo } }); return result.deletedCount; }
 async function handleSuperAdminCommands(bot, msg) { const text = msg.text || ""; const fromId = msg.from.id.toString(); if (text === '/superhelp') { const keyboard = { inline_keyboard: [[{ text: "🚨 Manual Verification", callback_data: "admin_superhelpsection_verification" }], [{ text: "👑 Admin Dashboard Explained", callback_data: "admin_superhelpsection_dashboard" }], [{ text: "🔑 Moderation Commands", callback_data: "admin_superhelpsection_moderation" }], ]}; await bot.sendMessage(fromId, "Welcome, Super Admin! This is your special help section.", { reply_markup: keyboard }); return true; } const amountMatch = text.match(/(\d+\.\d{2})/); if (amountMatch && amountMatch[1]) { const amount = amountMatch[1]; await bot.sendMessage(fromId, `Received amount ₹${amount}. Attempting manual verification...`); await processPayment(amount, bot, "Manual (Admin)"); return true; } if (text === '/viewowners') { const owners = await Owner.find({}).sort({ created_at: -1 }).limit(10); if (owners.length === 0) return bot.sendMessage(fromId, "No owners have registered yet."); const keyboard = owners.map(o => ([{ text: `${o.first_name} (${o.telegram_id}) ${o.is_banned ? '- 🚫 BANNED' : ''}`, callback_data: `admin_inspect_${o._id}` }])); bot.sendMessage(fromId, "Here are the most recent owners. Select one to manage:", { reply_markup: { inline_keyboard: keyboard } }); return true; } if (text.startsWith('/unban ')) { const ownerId = text.split(' ')[1]; const owner = await Owner.findOneAndUpdate({ telegram_id: ownerId }, { is_banned: false, $unset: { banned_at: "" } }); if (owner) { bot.sendMessage(owner.telegram_id, `✅ Good News! Your account has been unbanned by the admin.`); bot.sendMessage(fromId, `✅ Owner ${owner.first_name} has been unbanned.`); } else { bot.sendMessage(fromId, "Owner not found with that Telegram ID."); } return true; } if (text.startsWith('/removesubscriber ')) { const parts = text.split(' '); if (parts.length !== 3) return bot.sendMessage(fromId, "Invalid format. Use:\n/removesubscriber <USER_ID> <CHANNEL_ID>"); const [, subscriberId, channelId] = parts; try { await bot.kickChatMember(channelId, subscriberId); await bot.unbanChatMember(channelId, subscriberId); const result = await Subscriber.deleteOne({ telegram_id: subscriberId, channel_id: channelId }); if (result.deletedCount > 0) { bot.sendMessage(subscriberId, "Your subscription has been manually revoked by an admin.").catch(() => {}); bot.sendMessage(fromId, `✅ Success! User ${subscriberId} removed from channel ${channelId}.`); } else { bot.sendMessage(fromId, `⚠️ User ${subscriberId} not in DB for channel ${channelId}, but kick command sent.`); } } catch(error) { bot.sendMessage(fromId, `❌ Error removing subscriber: ${error.message}`); } return true; } return false; }
 async function handleAdminCallback(bot, cbq) { const fromId = cbq.from.id.toString(); const data = cbq.data; const parts = data.split('_'); const action = parts[1]; const objectId = parts[2]; if (action === 'inspect') { const owner = await Owner.findById(objectId); const channels = await ManagedChannel.find({ owner_id: objectId }); let text = `*Inspecting ${owner.first_name}* (\`${owner.telegram_id}\`)\n\n*Status:* ${owner.is_banned ? '🚫 BANNED' : '✅ Active'}\n*Wallet:* ₹${owner.wallet_balance.toFixed(2)}`; const keyboard = channels.map(c => ([{ text: c.channel_name, callback_data: `admin_getlink_${c._id}`}])); if (!owner.is_banned) { keyboard.push([{ text: `🚫 BAN THIS OWNER`, callback_data: `admin_ban_${objectId}` }]); } keyboard.push([{ text: `⬅️ Back to Owner List`, callback_data: `admin_viewowners` }]); bot.editMessageText(text, { chat_id: fromId, message_id: cbq.message.message_id, parse_mode: 'Markdown', reply_markup: { inline_keyboard: keyboard }}); } if (action === 'getlink') { const channel = await ManagedChannel.findById(objectId); const link = await bot.createChatInviteLink(channel.channel_id, { member_limit: 1 }); bot.sendMessage(fromId, `Here is the one-time inspection link for *${channel.channel_name}*:\n\n${link.invite_link}`, { parse_mode: 'Markdown' }); } if (action === 'ban') { const owner = await Owner.findByIdAndUpdate(objectId, { is_banned: true, banned_at: new Date() }); await ManagedChannel.deleteMany({ owner_id: objectId }); bot.sendMessage(owner.telegram_id, `⚠️ **Your Account Has Been Banned** ⚠️\n\nThis is due to a violation of our terms. Your channels have been removed and withdrawals are disabled.\n\nPlease contact support: @${SUPER_ADMIN_USERNAME}`, { parse_mode: 'Markdown' }); bot.editMessageText(`✅ Owner ${owner.first_name} has been banned.`, { chat_id: fromId, message_id: cbq.message.message_id }); } if (action === 'viewowners') { const owners = await Owner.find({}).sort({ created_at: -1 }).limit(10); const keyboard = owners.map(o => ([{ text: `${o.first_name} (${o.telegram_id}) ${o.is_banned ? '- 🚫 BANNED' : ''}`, callback_data: `admin_inspect_${o._id}` }])); bot.editMessageText("Select an owner to inspect:", { chat_id: fromId, message_id: cbq.message.message_id, reply_markup: { inline_keyboard: keyboard } }); } if (action === 'superhelpsection') { const helpContent = { verification: `*🚨 Manual Payment Verification*\n\nWhen the automatic (SMS) system fails, you can manually verify a payment. You will get a notification with a **Unique Amount** (e.g., \`₹100.17\`). Just send this amount (e.g., \`100.17\`) to the bot, and it will process the payment.`, dashboard: `*👑 Admin Dashboard Explained*\n\nYour web dashboard is your master control room. The "Financials" section shows:\n\n- *Total Paid to Owners:* Money you have successfully sent.\n- *Pending Payouts:* Total money in all owners' wallets that you are liable to pay out.`, moderation: `*🔑 Moderation Commands*\n\n- \`/viewowners\`: See a list of all channel owners.\n- \`/unban <USER_ID>\`: Unban an owner.\n- \`/removesubscriber <USER_ID> <CHANNEL_ID>\`: Forcibly remove a subscriber from a channel.` }; await bot.editMessageText(helpContent[objectId], { chat_id: fromId, message_id: cbq.message.message_id, parse_mode: 'Markdown', reply_markup: { inline_keyboard: [[{ text: "⬅️ Back", callback_data: "admin_superhelp" }]] } }); } if (action === 'superhelp') { const keyboard = { inline_keyboard: [ [{ text: "🚨 Manual Verification", callback_data: "admin_superhelpsection_verification" }], [{ text: "👑 Admin Dashboard Explained", callback_data: "admin_superhelpsection_dashboard" }], [{ text: "🔑 Moderation Commands", callback_data: "admin_superhelpsection_moderation" }], ]}; await bot.editMessageText("Welcome, Super Admin! This is your special help section.", { chat_id: fromId, message_id: cbq.message.message_id, reply_markup: keyboard }); } }
-bot.on('callback_query', async (callbackQuery) => { const fromId = callbackQuery.from.id.toString(); const data = callbackQuery.data || ""; if (fromId === SUPER_ADMIN_ID && data.startsWith('admin_')) { return handleAdminCallback(bot, callbackQuery); } if (data.startsWith('sub_report_')) { const channelId = data.split('_')[2]; userStates[fromId] = { awaiting: 'report_reason', channelId }; await bot.answerCallbackQuery(callbackQuery.id); await bot.sendMessage(fromId, "Please describe the issue you are facing. Your message will be sent to the admin."); return; } if (data.startsWith('sub_')) { await handleSubscriberCallback(bot, callbackQuery); } else if (data.startsWith('owner_')) { await handleOwnerCallback(bot, callbackQuery, userStates); } });
+bot.on('callback_query', async (callbackQuery) => { const fromId = callbackQuery.from.id.toString(); const data = callbackQuery.data || ""; if (fromId === SUPER_ADMIN_ID && data.startsWith('admin_')) { return handleAdminCallback(bot, callbackQuery); } if (data.startsWith('sub_report_')) { const channelId = data.split('_')[2]; userStates[fromId] = { awaiting: 'report_reason', channelId }; await bot.answerCallbackQuery(callbackQuery.id); await bot.sendMessage(fromId, "Please describe the issue you are facing. Your message will be sent to the admin."); return; } if (data.startsWith('sub_')) { await handleSubscriberCallback(bot, callbackQuery); } else if (data.startsWith('owner_')) { await handleOwnerCallback(bot, callbackQuery); } });
 bot.on("polling_error", (error) => console.log(`Polling Error: ${error.code} - ${error.message}`));
 console.log('🤖 Bot is running...');
 app.listen(PORT, () => { console.log(`🚀 Server is running on http://localhost:${PORT}`); });
