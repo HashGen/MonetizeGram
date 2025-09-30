@@ -36,17 +36,17 @@ module.exports = {
         // Case 2: A brand new user types /start
         } else {
             const welcomeText = `
-👋 *Welcome to EncoDeco Bot!*
+👋 *_Welcome to Monetize Gram Bot!_*
 
-The ultimate platform to monetize your Telegram channel or join exclusive premium content.
+_The Ultimate Platform To Monetize Your Telegram Channel Or Join Exclusive Premium Content._
 
-What would you like to do today?
+_What Would You Like To Do Today?_
             `;
 
             const keyboard = {
                 inline_keyboard: [
                     [{ text: "🚀 Monetize My Channel", callback_data: "owner_add" }],
-                    [{ text: "❓ How it Works", callback_data: "owner_help" }]
+                    [{ text: "❓ How It Works", callback_data: "owner_help" }]
                 ]
             };
 
