@@ -177,16 +177,13 @@ You can check the status of all your past and pending requests in your dashboard
 async function handleOwnerMessage(bot, msg, userStates) {
     const fromId = msg.from.id.toString();
     const text = msg.text || "";
-
     let owner = await Owner.findOne({ telegram_id: fromId });
     if (!owner) {
         owner = await Owner.create({ telegram_id: fromId, first_name: msg.from.first_name, username: msg.from.username });
     }
-    
     if (owner.is_banned) {
         return bot.sendMessage(fromId, `❌ Your account is currently banned. Please contact support: @${process.env.SUPER_ADMIN_USERNAME}`);
     }
-
     const state = userStates[fromId];
     if (state && state.awaiting) {
         if (state.awaiting === 'upi_id') await handleUpiInput(bot, msg, owner, userStates);
@@ -195,7 +192,6 @@ async function handleOwnerMessage(bot, msg, userStates) {
         else if (state.awaiting === 'edit_plans') await handlePlansInput(bot, msg, owner, userStates, true);
         return;
     }
-
     switch (text) {
         case '/start': await showMainMenu(bot, msg.chat.id, owner); break;
         case '/addchannel': await startAddChannelFlow(bot, msg.chat.id, fromId, userStates); break;
@@ -214,11 +210,9 @@ async function handleOwnerCallback(bot, cbq, userStates) {
     const data = cbq.data;
     
     let owner = await Owner.findOne({ telegram_id: fromId });
-    // --- THIS IS THE FIX for the CRASH ---
     if (!owner) {
         owner = await Owner.create({ telegram_id: fromId, first_name: cbq.from.first_name, username: cbq.from.username });
     }
-    // --- END OF FIX ---
 
     await bot.answerCallbackQuery(cbq.id);
 
@@ -255,7 +249,7 @@ async function handleOwnerCallback(bot, cbq, userStates) {
     }
 }
 
-async function showMainMenu(bot, chatId, owner, text = "Welcome, Channel Owner!", messageId = null) { const lang = owner.language || 'en'; const otherLang = lang === 'en' ? 'hi' : 'en'; const langText = lang === 'en' ? '🇮🇳 हिंदी में स्विच करें' : '🇬🇧 Switch to English'; const keyboard = { inline_keyboard: [ [{ text: "📊 My Dashboard", callback_data: "owner_dashboard" }, { text: "➕ Add a New Channel", callback_data: "owner_add" }], [{ text: "📺 My Channels", callback_data: "owner_mychannels" }, { text: "❓ Help & Support", callback_data: "owner_help" }] ]}; if (messageId) await bot.editMessageText(text, { chat_id: chatId, message_id: messageId, reply_markup: keyboard }); else await bot.sendMessage(chatId, text, { reply_markup: keyboard }); }
+async function showMainMenu(bot, chatId, owner, text = "Welcome, Channel Owner!", messageId = null) { const keyboard = { inline_keyboard: [ [{ text: "📊 My Dashboard", callback_data: "owner_dashboard" }, { text: "➕ Add a New Channel", callback_data: "owner_add" }], [{ text: "📺 My Channels", callback_data: "owner_mychannels" }, { text: "❓ Help & Support", callback_data: "owner_help" }] ]}; if (messageId) await bot.editMessageText(text, { chat_id: chatId, message_id: messageId, reply_markup: keyboard }); else await bot.sendMessage(chatId, text, { reply_markup: keyboard }); }
 async function showHelpMenu(bot, chatId, owner, messageId = null) { const lang = owner.language || 'en'; const otherLang = lang === 'en' ? 'hi' : 'en'; const langText = lang === 'en' ? '🇮🇳 हिंदी में स्विच करें' : '🇬🇧 Switch to English'; const help = LANGUAGES[lang].HELP_TEXTS; const keyboard = { inline_keyboard: [ [{ text: "🚀 Getting Started", callback_data: "owner_helpsection_gettingStarted" }], [{ text: "📊 Understanding Dashboard", callback_data: "owner_helpsection_dashboard" }], [{ text: "📺 Managing Channels", callback_data: "owner_helpsection_managingChannels" }], [{ text: "💸 Withdrawal Process", callback_data: "owner_helpsection_withdrawals" }], [{ text: langText, callback_data: `owner_setlang_${otherLang}`}], [{ text: "⬅️ Back to Main Menu", callback_data: "owner_mainmenu" }] ]}; if(messageId) await bot.editMessageText(help.main, { chat_id: chatId, message_id: messageId, parse_mode: 'Markdown', reply_markup: keyboard }); else await bot.sendMessage(chatId, help.main, { parse_mode: 'Markdown', reply_markup: keyboard }); }
 async function handleChannelForward(bot, msg, owner, userStates) { const fromId = owner.telegram_id; if (msg.forward_from_chat) { const channelId = msg.forward_from_chat.id.toString(); const channelName = msg.forward_from_chat.title; try { const botMember = await bot.getChatMember(channelId, (await bot.getMe()).id); if (botMember.status !== 'administrator') { await bot.sendMessage(fromId, `❌ Bot is not an admin in "${channelName}". Please make the bot an admin and try again.`); delete userStates[fromId]; return; } userStates[fromId] = { awaiting: 'plans', channel_id: channelId, channel_name: channelName }; await bot.sendMessage(fromId, `✅ Great! Bot is an admin in "${channelName}".\n\nNow, send subscription plans in this format:\n\n\`30 days 100 rs\`\n\`90 days 250 rs\``, { parse_mode: 'Markdown' }); } catch (error) { await bot.sendMessage(fromId, `❌ An error occurred. Please make sure the bot is an admin in your channel and try again.`); delete userStates[fromId]; } } else { await bot.sendMessage(fromId, `That was not a forwarded message. Please forward a message from your channel.`); }};
 async function handlePlansInput(bot, msg, owner, userStates, isEdit = false) { const fromId = owner.telegram_id; const state = userStates[fromId]; const lines = msg.text.split('\n'); const plans = []; let parseError = false; for (const line of lines) { const parts = line.match(/(\d+)\s+days?\s+(\d+)\s+rs?/i); if (parts) { plans.push({ days: parseInt(parts[1]), price: parseInt(parts[2]) }); } else if (line.trim() !== '') { parseError = true; break; } } if (parseError || plans.length === 0) { await bot.sendMessage(fromId, `❌ Invalid format. Please use the format like: \`30 days 100 rs\`. Try again.`); } else { if (isEdit) { await ManagedChannel.findByIdAndUpdate(state.channel_db_id, { plans: plans }); await bot.sendMessage(fromId, `✅ Plans updated successfully!`); } else { const uniqueKey = nanoid(8); await ManagedChannel.create({ owner_id: owner._id, channel_id: state.channel_id, channel_name: state.channel_name, unique_start_key: uniqueKey, plans: plans }); const link = `https://t.me/${(await bot.getMe()).username}?start=${uniqueKey}`; await bot.sendMessage(fromId, `✅ Channel Added Successfully!\n\nShare this link with your users:\n\n\`${link}\``, { parse_mode: 'Markdown' }); } delete userStates[fromId]; }};
