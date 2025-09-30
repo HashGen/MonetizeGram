@@ -17,7 +17,7 @@
 <body class="bg-slate-100">
 
     <!-- LOGIN SCREEN -->
-    <div id="login-screen" class="flex items-center justify-center min-h-screen bg-slate-200">
+    <div id="login-screen" class="flex items-center justify-center min-h-screen bg-slate-200 p-4">
         <div class="bg-white p-8 rounded-xl shadow-lg w-full max-w-sm">
             <h1 class="text-2xl font-bold mb-6 text-slate-800 text-center">Admin Login</h1>
             <div class="space-y-4">
@@ -29,53 +29,54 @@
                     <span id="login-btn-text">Log In</span>
                     <div id="login-spinner" class="spinner hidden"></div>
                 </button>
-                <p id="login-error" class="text-red-500 text-sm text-center"></p>
+                <p id="login-error" class="text-red-500 text-sm text-center h-4"></p>
             </div>
         </div>
     </div>
 
     <!-- DASHBOARD SCREEN -->
     <div id="dashboard-screen" class="hidden">
-        <div class="flex h-screen bg-slate-200">
+        <div class="flex flex-col md:flex-row h-screen bg-slate-200">
+            <!-- Mobile Header -->
+            <header class="md:hidden bg-slate-800 text-white p-4 flex justify-between items-center">
+                <div class="text-xl font-bold">EncoDeco Admin</div>
+                <button id="mobile-menu-btn"><i class="fas fa-bars"></i></button>
+            </header>
+            
             <!-- Sidebar -->
-            <aside class="w-64 bg-slate-800 text-slate-200 flex flex-col">
-                <div class="p-4 text-2xl font-bold border-b border-slate-700">APCMB Admin</div>
+            <aside id="sidebar" class="w-full md:w-64 bg-slate-800 text-slate-200 flex-col absolute md:relative inset-y-0 left-0 transform md:transform-none -translate-x-full transition-transform duration-200 ease-in-out z-20 flex">
+                <div class="p-4 text-2xl font-bold border-b border-slate-700 hidden md:block">APCMB Admin</div>
                 <nav class="flex-1 p-2 space-y-1">
                     <a href="#" data-view="dashboard" class="sidebar-link active flex items-center gap-3 px-4 py-2 rounded-md hover:bg-slate-700"><i class="fas fa-tachometer-alt fa-fw"></i> Dashboard</a>
                     <a href="#" data-view="withdrawals" class="sidebar-link flex items-center gap-3 px-4 py-2 rounded-md hover:bg-slate-700"><i class="fas fa-hand-holding-usd fa-fw"></i> Withdrawals</a>
                     <a href="#" data-view="owners" class="sidebar-link flex items-center gap-3 px-4 py-2 rounded-md hover:bg-slate-700"><i class="fas fa-users fa-fw"></i> Owners</a>
                 </nav>
+                <div class="p-4 border-t border-slate-700">
+                    <button id="logout-btn" class="w-full bg-red-500 text-white px-4 py-2 rounded-md hover:bg-red-600 text-sm font-medium flex items-center justify-center gap-2">
+                        <i class="fas fa-sign-out-alt"></i> Log Out
+                    </button>
+                </div>
             </aside>
 
             <!-- Main Content -->
             <main class="flex-1 flex flex-col overflow-hidden">
-                <header class="bg-white shadow-md p-4 flex justify-end">
-                    <button id="logout-btn" class="bg-red-500 text-white px-4 py-2 rounded-md hover:bg-red-600 text-sm font-medium">Log Out</button>
+                <header class="bg-white shadow-md p-4 justify-end hidden md:flex">
+                    <!-- Desktop has logout button in sidebar -->
                 </header>
-                <div class="flex-1 p-6 overflow-y-auto">
+                <div class="flex-1 p-4 md:p-6 overflow-y-auto">
                     <!-- Dashboard View -->
                     <div id="dashboard-view" class="view space-y-6">
-                        <div id="stats-section" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-                            <div class="bg-white p-6 rounded-lg shadow"><h3 class="text-slate-500">Total Owners</h3><p id="stats-owners" class="text-3xl font-bold">0</p></div>
-                            <div class="bg-white p-6 rounded-lg shadow"><h3 class="text-slate-500">Total Channels</h3><p id="stats-channels" class="text-3xl font-bold">0</p></div>
-                            <div class="bg-white p-6 rounded-lg shadow"><h3 class="text-slate-500">Total Revenue</h3><p id="stats-revenue" class="text-3xl font-bold">₹0</p></div>
-                            <div class="bg-white p-6 rounded-lg shadow"><h3 class="text-slate-500">My Commission</h3><p id="stats-commission" class="text-3xl font-bold">₹0</p></div>
+                        <div id="stats-section" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+                            <div class="bg-white p-6 rounded-lg shadow"><h3 class="text-slate-500">Total Owners</h3><p id="stats-owners" class="text-3xl font-bold">...</p></div>
+                            <div class="bg-white p-6 rounded-lg shadow"><h3 class="text-slate-500">Total Channels</h3><p id="stats-channels" class="text-3xl font-bold">...</p></div>
+                            <div class="bg-white p-6 rounded-lg shadow"><h3 class="text-slate-500">Total Revenue</h3><p id="stats-revenue" class="text-3xl font-bold">...</p></div>
+                            <div class="bg-white p-6 rounded-lg shadow"><h3 class="text-slate-500">My Commission</h3><p id="stats-commission" class="text-3xl font-bold">...</p></div>
                         </div>
                     </div>
                     <!-- Withdrawals View -->
-                    <div id="withdrawals-view" class="view hidden">
-                        <div class="bg-white p-6 rounded-lg shadow">
-                            <h2 class="text-2xl font-bold mb-4">Pending Withdrawal Requests</h2>
-                            <div class="overflow-x-auto"><table class="min-w-full divide-y divide-slate-200"><thead class="bg-slate-50"><tr><th class="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase">Owner</th><th class="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase">Amount</th><th class="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase">UPI ID</th><th class="px-6 py-3 text-center text-xs font-medium text-slate-500 uppercase">Actions</th></tr></thead><tbody id="withdrawals-table-body" class="bg-white divide-y divide-slate-200"></tbody></table></div>
-                        </div>
-                    </div>
+                    <div id="withdrawals-view" class="view hidden"><div class="bg-white p-6 rounded-lg shadow"><h2 class="text-2xl font-bold mb-4">Pending Withdrawal Requests</h2><div class="overflow-x-auto"><table class="min-w-full divide-y divide-slate-200"><thead class="bg-slate-50"><tr><th class="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase">Owner</th><th class="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase">Amount</th><th class="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase">UPI ID</th><th class="px-6 py-3 text-center text-xs font-medium text-slate-500 uppercase">Actions</th></tr></thead><tbody id="withdrawals-table-body" class="bg-white divide-y divide-slate-200"></tbody></table></div></div></div>
                     <!-- Owners View -->
-                    <div id="owners-view" class="view hidden">
-                        <div class="bg-white p-6 rounded-lg shadow">
-                            <h2 class="text-2xl font-bold mb-4">All Channel Owners</h2>
-                            <div class="overflow-x-auto"><table class="min-w-full divide-y divide-slate-200"><thead class="bg-slate-50"><tr><th class="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase">Owner Details</th><th class="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase">Wallet Balance</th><th class="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase">Total Earnings</th><th class="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase">Registered On</th></tr></thead><tbody id="owners-table-body" class="bg-white divide-y divide-slate-200"></tbody></table></div>
-                        </div>
-                    </div>
+                    <div id="owners-view" class="view hidden"><div class="bg-white p-6 rounded-lg shadow"><h2 class="text-2xl font-bold mb-4">All Channel Owners</h2><div class="overflow-x-auto"><table class="min-w-full divide-y divide-slate-200"><thead class="bg-slate-50"><tr><th class="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase">Owner Details</th><th class="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase">Wallet Balance</th><th class="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase">Total Earnings</th><th class="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase">Registered On</th></tr></thead><tbody id="owners-table-body" class="bg-white divide-y divide-slate-200"></tbody></table></div></div></div>
                 </div>
             </main>
         </div>
@@ -84,100 +85,43 @@
     <script>
         document.addEventListener('DOMContentLoaded', () => {
             // --- ELEMENTS ---
-            const loginScreen = document.getElementById('login-screen');
-            const dashboardScreen = document.getElementById('dashboard-screen');
-            const secretInput = document.getElementById('admin-secret');
-            const loginBtn = document.getElementById('login-btn');
-            const loginBtnText = document.getElementById('login-btn-text');
-            const loginSpinner = document.getElementById('login-spinner');
-            const loginError = document.getElementById('login-error');
-            const logoutBtn = document.getElementById('logout-btn');
-            const sidebarLinks = document.querySelectorAll('.sidebar-link');
-            const views = document.querySelectorAll('.view');
-            
+            const loginScreen = document.getElementById('login-screen'), dashboardScreen = document.getElementById('dashboard-screen');
+            const secretInput = document.getElementById('admin-secret'), loginBtn = document.getElementById('login-btn');
+            const loginBtnText = document.getElementById('login-btn-text'), loginSpinner = document.getElementById('login-spinner'), loginError = document.getElementById('login-error');
+            const logoutBtns = document.querySelectorAll('#logout-btn'), sidebar = document.getElementById('sidebar'), mobileMenuBtn = document.getElementById('mobile-menu-btn');
+            const sidebarLinks = document.querySelectorAll('.sidebar-link'), views = document.querySelectorAll('.view');
             let adminSecret = '';
 
             // --- API HELPERS ---
-            const fetchData = async (url) => { /* ... no change ... */ };
-            const postData = async (url) => { /* ... no change ... */ };
-
+            const fetchData = async (url) => { const r = await fetch(`${url}?secret=${adminSecret}`); if (!r.ok) throw new Error(await r.text()); return r.json(); };
+            const postData = async (url) => { const r = await fetch(`${url}?secret=${adminSecret}`,{method:'POST'}); if (!r.ok) throw new Error(await r.text()); return r.json(); };
+            
             // --- DATA LOADERS ---
-            const loadStats = async () => { /* ... no change ... */ };
-            const loadWithdrawals = async () => { /* ... no change ... */ };
-            const loadOwners = async () => { /* ... no change ... */ };
+            const loadStats = async () => { try{ const s = await fetchData('/api/super/stats'); document.getElementById('stats-owners').textContent = s.totalOwners; document.getElementById('stats-channels').textContent = s.totalChannels; document.getElementById('stats-revenue').textContent = `₹${(s.totalRevenue || 0).toFixed(2)}`; document.getElementById('stats-commission').textContent = `₹${(s.totalCommission || 0).toFixed(2)}`; } catch(e){ console.error("Stats Error:", e) } };
+            const loadWithdrawals = async () => { try{ const t = document.getElementById('withdrawals-table-body'); t.innerHTML=''; const r=await fetchData('/api/super/withdrawals'); if(r.length===0){t.innerHTML=`<tr><td colspan="4" class="text-center p-4 text-slate-500">No pending requests.</td></tr>`} r.forEach(req => {t.innerHTML+=`<tr><td class="px-6 py-4">${req.owner_id.first_name} (${req.owner_id.telegram_id})</td><td class="px-6 py-4 font-bold">₹${req.amount.toFixed(2)}</td><td class="px-6 py-4">${req.upi_id}</td><td class="px-6 py-4 text-center space-x-2"><button data-id="${req._id}" class="approve-btn bg-green-500 text-white px-3 py-1 rounded-md text-sm hover:bg-green-600">Approve</button><button data-id="${req._id}" class="reject-btn bg-red-500 text-white px-3 py-1 rounded-md text-sm hover:bg-red-600">Reject</button></td></tr>`}) } catch(e){ console.error("Withdrawals Error:", e) }};
+            const loadOwners = async () => { try { const t = document.getElementById('owners-table-body'); t.innerHTML=''; const o=await fetchData('/api/super/owners'); if(o.length===0){t.innerHTML=`<tr><td colspan="4" class="text-center p-4 text-slate-500">No owners registered.</td></tr>`} o.forEach(owner => {t.innerHTML+=`<tr><td class="px-6 py-4"><div class="font-bold">${owner.first_name||'N/A'}</div><div class="text-sm text-slate-500">${owner.telegram_id}</div></td><td class="px-6 py-4 font-bold text-green-600">₹${(owner.wallet_balance||0).toFixed(2)}</td><td class="px-6 py-4">₹${(owner.total_earnings||0).toFixed(2)}</td><td class="px-6 py-4 text-sm text-slate-500">${new Date(owner.created_at).toLocaleDateString()}</td></tr>`}) } catch(e){ console.error("Owners Error:", e) }};
 
             // --- UI LOGIC ---
-            const showDashboard = () => {
-                loginScreen.classList.add('hidden');
-                dashboardScreen.classList.remove('hidden');
-                loadStats(); loadWithdrawals(); loadOwners();
-            };
-            
-            const showLogin = () => {
-                loginScreen.classList.remove('hidden');
-                dashboardScreen.classList.add('hidden');
-            };
-
-            const handleLogin = async () => {
-                const enteredSecret = secretInput.value;
-                if (!enteredSecret) { loginError.textContent = 'Please enter a secret key.'; return; }
-
-                loginError.textContent = '';
-                loginBtnText.classList.add('hidden');
-                loginSpinner.classList.remove('hidden');
-                loginBtn.disabled = true;
-                
-                adminSecret = enteredSecret;
-                try {
-                    await fetchData('/api/super/stats'); // Test the secret key
-                    localStorage.setItem('adminSecretKey', enteredSecret);
-                    showDashboard();
-                } catch (err) {
-                    loginError.textContent = "Invalid Secret Key. Please try again.";
-                } finally {
-                    loginBtnText.classList.remove('hidden');
-                    loginSpinner.classList.add('hidden');
-                    loginBtn.disabled = false;
-                }
-            };
-
-            const handleLogout = () => {
-                localStorage.removeItem('adminSecretKey');
-                adminSecret = '';
-                secretInput.value = '';
-                showLogin();
-            };
-
-            const handleNavigation = (e) => {
-                e.preventDefault();
-                const viewId = e.currentTarget.dataset.view;
-                
-                views.forEach(view => view.classList.add('hidden'));
-                document.getElementById(`${viewId}-view`).classList.remove('hidden');
-                
-                sidebarLinks.forEach(link => link.classList.remove('active'));
-                e.currentTarget.classList.add('active');
-            };
+            const showDashboard = () => { loginScreen.classList.add('hidden'); dashboardScreen.classList.remove('hidden'); loadStats(); loadWithdrawals(); loadOwners(); };
+            const showLogin = () => { loginScreen.classList.remove('hidden'); dashboardScreen.classList.add('hidden'); };
+            const handleLogin = async () => { /* ... no change ... */ };
+            const handleLogout = () => { /* ... no change ... */ };
+            const handleNavigation = (e) => { e.preventDefault(); const v=e.currentTarget.dataset.view; views.forEach(v => v.classList.add('hidden')); document.getElementById(`${v}-view`).classList.remove('hidden'); sidebarLinks.forEach(l => l.classList.remove('active')); e.currentTarget.classList.add('active'); if(window.innerWidth < 768) sidebar.classList.add('-translate-x-full'); };
             
             // --- EVENT LISTENERS ---
             loginBtn.addEventListener('click', handleLogin);
             secretInput.addEventListener('keypress', (e) => { if(e.key === 'Enter') handleLogin(); });
-            logoutBtn.addEventListener('click', handleLogout);
-            sidebarLinks.forEach(link => link.addEventListener('click', handleNavigation));
+            logoutBtns.forEach(b => b.addEventListener('click', handleLogout));
+            sidebarLinks.forEach(l => l.addEventListener('click', handleNavigation));
+            mobileMenuBtn.addEventListener('click', () => sidebar.classList.toggle('-translate-x-full'));
 
             // --- ON PAGE LOAD ---
             const savedSecret = localStorage.getItem('adminSecretKey');
-            if (savedSecret) {
-                adminSecret = savedSecret;
-                showDashboard();
-            }
+            if (savedSecret) { adminSecret = savedSecret; showDashboard(); }
 
-            // --- Copy-paste unchanged functions ---
-            fetchData = async (url) => { const r = await fetch(`${url}?secret=${adminSecret}`); if (!r.ok) throw new Error(); return r.json(); };
-            postData = async (url) => { const r = await fetch(`${url}?secret=${adminSecret}`,{method:'POST'}); if (!r.ok) throw new Error(); return r.json(); };
-            loadStats = async () => { const s = await fetchData('/api/super/stats'); document.getElementById('stats-owners').textContent = s.totalOwners; document.getElementById('stats-channels').textContent = s.totalChannels; document.getElementById('stats-revenue').textContent = `₹${(s.totalRevenue || 0).toFixed(2)}`; document.getElementById('stats-commission').textContent = `₹${(s.totalCommission || 0).toFixed(2)}`; };
-            loadWithdrawals = async () => { const t = document.getElementById('withdrawals-table-body'); t.innerHTML=''; const r=await fetchData('/api/super/withdrawals'); if(r.length===0){t.innerHTML=`<tr><td colspan="4" class="text-center p-4 text-slate-500">No pending requests.</td></tr>`} r.forEach(req => {t.innerHTML+=`<tr><td class="px-6 py-4">${req.owner_id.first_name} (${req.owner_id.telegram_id})</td><td class="px-6 py-4 font-bold">₹${req.amount.toFixed(2)}</td><td class="px-6 py-4">${req.upi_id}</td><td class="px-6 py-4 text-center space-x-2"><button data-id="${req._id}" class="approve-btn bg-green-500 text-white px-3 py-1 rounded-md text-sm hover:bg-green-600">Approve</button><button data-id="${req._id}" class="reject-btn bg-red-500 text-white px-3 py-1 rounded-md text-sm hover:bg-red-600">Reject</button></td></tr>`}) };
-            loadOwners = async () => { const t = document.getElementById('owners-table-body'); t.innerHTML=''; const o=await fetchData('/api/super/owners'); if(o.length===0){t.innerHTML=`<tr><td colspan="4" class="text-center p-4 text-slate-500">No owners registered.</td></tr>`} o.forEach(owner => {t.innerHTML+=`<tr><td class="px-6 py-4"><div class="font-bold">${owner.first_name||'N/A'}</div><div class="text-sm text-slate-500">${owner.telegram_id}</div></td><td class="px-6 py-4 font-bold text-green-600">₹${(owner.wallet_balance||0).toFixed(2)}</td><td class="px-6 py-4">₹${(owner.total_earnings||0).toFixed(2)}</td><td class="px-6 py-4 text-sm text-slate-500">${new Date(owner.created_at).toLocaleDateString()}</td></tr>`}) };
+            // --- Unchanged functions ---
+            handleLogin = async () => { const s = secretInput.value; if (!s) { loginError.textContent = 'Please enter a secret key.'; return; } loginError.textContent = ''; loginBtnText.classList.add('hidden'); loginSpinner.classList.remove('hidden'); loginBtn.disabled = true; adminSecret = s; try { await fetchData('/api/super/stats'); localStorage.setItem('adminSecretKey', s); showDashboard(); } catch (err) { loginError.textContent = "Invalid Secret Key."; localStorage.removeItem('adminSecretKey');} finally { loginBtnText.classList.remove('hidden'); loginSpinner.classList.add('hidden'); loginBtn.disabled = false; } };
+            handleLogout = () => { localStorage.removeItem('adminSecretKey'); adminSecret = ''; secretInput.value = ''; showLogin(); };
             document.getElementById('withdrawals-table-body').addEventListener('click', async (e) => { const btn=e.target.closest('button'); if(!btn) return; const id=btn.dataset.id; if(!id) return; const action=btn.matches('.approve-btn')?'approve':'reject'; if(!confirm(`Sure to ${action} this?`))return; btn.disabled=true; const txt=btn.textContent; btn.textContent='...'; try{ await postData(`/api/super/withdrawals/${id}/${action}`); alert(`Request ${action}d!`); await loadWithdrawals() } catch(err){ alert(`Failed to ${action}`); btn.disabled=false; btn.textContent=txt; }});
         });
     </script>
