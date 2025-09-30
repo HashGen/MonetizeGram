@@ -17,10 +17,10 @@ const { handleSubscriberMessage, handleSubscriberCallback, initialize } = requir
 // =================================================================
 // 2. CONFIGURATION & INITIALIZATION
 // =================================================================
-const { PORT, MONGO_URI, BOT_TOKEN, SUPER_ADMIN_ID, AUTOMATION_SECRET, PLATFORM_COMMISSION_PERCENT } = process.env;
+const { PORT, MONGO_URI, BOT_TOKEN, SUPER_ADMIN_ID, AUTOMATION_SECRET, PLATFORM_COMMISSION_PERCENT, CRON_SECRET } = process.env;
 
-if (!MONGO_URI || !BOT_TOKEN || !SUPER_ADMIN_ID) {
-    console.error("FATAL ERROR: Missing required environment variables.");
+if (!MONGO_URI || !BOT_TOKEN || !SUPER_ADMIN_ID || !CRON_SECRET) {
+    console.error("FATAL ERROR: Missing required environment variables (MONGO_URI, BOT_TOKEN, SUPER_ADMIN_ID, CRON_SECRET).");
     process.exit(1);
 }
 
@@ -63,8 +63,26 @@ app.post('/api/shortcut', async (req, res) => {
 const superAdminApi = require('./api/superAdmin');
 app.use('/api/super', superAdminApi(bot));
 
+// --- Internal Cron Job Endpoint ---
+app.get('/api/internal/cron/check-subscriptions', async (req, res) => {
+    const secret = req.query.secret;
+    if (secret !== CRON_SECRET) {
+        return res.status(403).send('Forbidden: Invalid cron secret');
+    }
+    
+    console.log('[CRON] Starting subscription check...');
+    try {
+        const expiredCount = await checkSubscriptions();
+        console.log(`[CRON] Finished. ${expiredCount} users removed.`);
+        res.status(200).send(`OK. ${expiredCount} users removed.`);
+    } catch (error) {
+        console.error('[CRON] Error during subscription check:', error);
+        res.status(500).send('Cron job failed.');
+    }
+});
+
 // =================================================================
-// 5. PAYMENT PROCESSING LOGIC
+// 5. PAYMENT & SUBSCRIPTION LOGIC
 // =================================================================
 async function processPayment(amount, bot, method = "Unknown") {
     try {
@@ -92,14 +110,8 @@ async function processPayment(amount, bot, method = "Unknown") {
         const expiryDate = new Date(Date.now() + plan_days * 24 * 60 * 60 * 1000);
         await Subscriber.findOneAndUpdate({ telegram_id: subscriber_id, channel_id: channel_id }, { expires_at: expiryDate, owner_id: owner.telegram_id, subscribed_at: new Date() }, { upsert: true });
         
-        // --- THIS IS THE FIX ---
-        // We are now adding an expiry date to make the link truly one-time use.
-        const expireDate = Math.floor(Date.now() / 1000) + (24 * 60 * 60); // Link will be valid for 24 hours
-        const inviteLink = await bot.createChatInviteLink(channel_id, {
-            member_limit: 1,
-            expire_date: expireDate
-        });
-        // --- END OF FIX ---
+        const inviteLinkExpireDate = Math.floor(Date.now() / 1000) + (24 * 60 * 60);
+        const inviteLink = await bot.createChatInviteLink(channel_id, { member_limit: 1, expire_date: inviteLinkExpireDate });
         
         await bot.sendMessage(subscriber_id, `✅ Payment confirmed! Your access to "${channel.channel_name}" is active.\n\nJoin using this **one-time link**: ${inviteLink.invite_link}\n\n_Note: This link will expire in 24 hours and can only be used once._`, { parse_mode: 'Markdown' });
         await bot.sendMessage(owner.telegram_id, `🎉 New Sale!\nA user subscribed to your channel "${channel.channel_name}" for ${plan_days} days.\n💰 ₹${amountToCredit.toFixed(2)} has been credited to your wallet.`);
@@ -109,6 +121,41 @@ async function processPayment(amount, bot, method = "Unknown") {
         console.error("[processPayment] FATAL CRASH:", error);
         await bot.sendMessage(SUPER_ADMIN_ID, `❌ **CRITICAL ERROR during payment processing for ₹${amount}**\n\n\`${error.message}\`\n\nPlease check the logs.`);
     }
+}
+
+async function checkSubscriptions() {
+    const now = new Date();
+    const expiredSubs = await Subscriber.find({ expires_at: { $lte: now } }).populate({ path: 'channel_id_mongoose', model: 'ManagedChannel' });
+
+    if (expiredSubs.length === 0) return 0;
+
+    let removedCount = 0;
+    for (const sub of expiredSubs) {
+        try {
+            const userId = sub.telegram_id;
+            const channel = sub.channel_id_mongoose;
+            
+            if (!channel) { // If the channel was deleted from our DB
+                await Subscriber.findByIdAndDelete(sub._id);
+                continue;
+            }
+            
+            const channelId = channel.channel_id;
+
+            await bot.kickChatMember(channelId, userId);
+            await bot.unbanChatMember(channelId, userId);
+
+            const renewButton = { inline_keyboard: [[{ text: "🔄 Renew Subscription", url: `https://t.me/${(await bot.getMe()).username}?start=${channel.unique_start_key}` }]] };
+            await bot.sendMessage(userId, `⌛️ **Your Subscription Has Expired**\n\nHello! Your subscription for the channel "**${channel.channel_name}**" has expired and you have been removed.\n\nTo regain access, please click the button below.`, { parse_mode: 'Markdown', reply_markup: renewButton });
+
+            await Subscriber.findByIdAndDelete(sub._id);
+            removedCount++;
+        } catch (error) {
+            console.error(`[CRON] Failed to process user ${sub.telegram_id}. Error: ${error.message}`);
+            await Subscriber.findByIdAndDelete(sub._id);
+        }
+    }
+    return removedCount;
 }
 
 // =================================================================
