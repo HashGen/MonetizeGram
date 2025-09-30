@@ -1,22 +1,25 @@
 const ManagedChannel = require('../models/managedChannel.model');
 const PendingPayment = require('../models/pendingPayment.model');
 
-let botInstance; // To hold the bot instance
+let botInstance;
+let userStatesRef; // Reference to the userStates object from server.js
 
 module.exports = {
-    initialize: (bot) => {
+    initialize: (bot, userStates) => {
         botInstance = bot;
+        userStatesRef = userStates;
     },
     
     handleSubscriberMessage: async (bot, msg) => {
         const chatId = msg.chat.id;
         const text = msg.text;
 
+        // Case 1: User clicks a special subscriber link (.../start=key)
         if (text.startsWith('/start ')) {
             const key = text.split(' ')[1];
             const channel = await ManagedChannel.findOne({ unique_start_key: key });
             if (!channel) {
-                await bot.sendMessage(chatId, `Sorry, this subscription link is invalid.`);
+                await bot.sendMessage(chatId, `Sorry, this subscription link is invalid or has expired.`);
                 return;
             }
             
@@ -29,8 +32,28 @@ module.exports = {
                 parse_mode: 'Markdown',
                 reply_markup: { inline_keyboard: keyboard }
             });
+        
+        // Case 2: A brand new user types /start
         } else {
-            await bot.sendMessage(chatId, `Hello! To subscribe to a channel, please use a special link provided by the channel owner.`);
+            const welcomeText = `
+👋 *Welcome to EncoDeco Bot!*
+
+The ultimate platform to monetize your Telegram channel or join exclusive premium content.
+
+What would you like to do today?
+            `;
+
+            const keyboard = {
+                inline_keyboard: [
+                    [{ text: "🚀 Monetize My Channel", callback_data: "owner_add" }],
+                    [{ text: "❓ How it Works", callback_data: "owner_help" }]
+                ]
+            };
+
+            await bot.sendMessage(chatId, welcomeText, {
+                parse_mode: 'Markdown',
+                reply_markup: keyboard
+            });
         }
     },
 
@@ -41,8 +64,12 @@ module.exports = {
         if (data.startsWith('sub_plan_')) {
             const [, , channelId, planDays] = data.split('_');
             const channel = await ManagedChannel.findById(channelId);
-            const plan = channel.plans.find(p => p.days.toString() === planDays);
+            if (!channel) {
+                await bot.answerCallbackQuery(cbq.id, { text: "This channel is no longer on our platform.", show_alert: true });
+                return;
+            }
 
+            const plan = channel.plans.find(p => p.days.toString() === planDays);
             if (!plan) {
                 await bot.answerCallbackQuery(cbq.id, { text: "This plan is no longer available.", show_alert: true });
                 return;
@@ -50,8 +77,6 @@ module.exports = {
 
             const uniqueAmount = `${plan.price}.${Math.floor(Math.random() * 90) + 10}`;
             
-            // --- THIS IS THE FIX ---
-            // Now we are saving the correct ID to the new field
             await PendingPayment.create({
                 unique_amount: uniqueAmount,
                 subscriber_id: fromId,
@@ -59,9 +84,8 @@ module.exports = {
                 channel_id: channel.channel_id,
                 plan_days: plan.days,
                 plan_price: plan.price,
-                channel_id_mongoose: channel._id // This ensures we can find the channel later
+                channel_id_mongoose: channel._id
             });
-            // --- END OF FIX ---
             
             await botInstance.sendMessage(process.env.SUPER_ADMIN_ID, `🔔 New Payment Link Generated:\n\nUser: \`${fromId}\`\nAmount: \`₹${uniqueAmount}\`\nChannel: ${channel.channel_name}`, { parse_mode: 'Markdown'});
             
