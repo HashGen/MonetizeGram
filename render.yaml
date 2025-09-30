@@ -1,0 +1,37 @@
+services:
+  # Yeh aapke main web server (bot) ki settings hain
+  - type: web
+    name: subtool-saas # Aapke service ka naam
+    runtime: node
+    plan: free # Free plan use karega
+    buildCommand: "npm install"
+    startCommand: "node server.js"
+    envVars:
+      - key: NODE_VERSION # Optional, lekin accha hai
+        value: 18
+      # --- IMPORTANT ---
+      # Aapko apne saare secret passwords (jaise BOT_TOKEN, MONGO_URI)
+      # abhi bhi Render ke dashboard mein "Environment" section mein
+      # ek baar set karne honge. Yeh security ke liye zaroori hai.
+      - key: BOT_TOKEN
+        sync: false
+      - key: MONGO_URI
+        sync: false
+      - key: SUPER_ADMIN_ID
+        sync: false
+      - key: SUPER_ADMIN_SECRET
+        sync: false
+      - key: AUTOMATION_SECRET
+        sync: false
+      - key: CRON_SECRET
+        sync: false
+      - key: PLATFORM_COMMISSION_PERCENT
+        value: 2
+      - key: MINIMUM_WITHDRAWAL_AMOUNT
+        value: 500
+
+cronJobs:
+  # Yeh aapke "Night Watchman" (Cron Job) ki settings hain
+  - name: subscription-checker
+    schedule: "0 0 * * *" # Har roz raat 12 baje
+    command: "curl '${RENDER_EXTERNAL_URL}/api/internal/cron/check-subscriptions?secret=${CRON_SECRET}'"
