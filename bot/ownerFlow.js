@@ -82,22 +82,36 @@ async function showMainMenu(bot, chatId, text = "Welcome, Channel Owner!", messa
     else await bot.sendMessage(chatId, text, { reply_markup: keyboard });
 }
 
+// --- THIS IS THE FIX ---
 async function showDashboard(bot, chatId, owner, messageId = null) {
     const commission_percent = parseFloat(process.env.PLATFORM_COMMISSION_PERCENT);
     const totalEarnings = owner.total_earnings || 0;
     const service_charge_amount = (totalEarnings * commission_percent) / 100;
     const walletBalance = owner.wallet_balance || 0;
 
+    // New query to get total paid out amount
+    const paidOutAggregation = await Withdrawal.aggregate([
+        { $match: { owner_id: owner._id, status: 'approved' } },
+        { $group: { _id: null, total: { $sum: '$amount' } } }
+    ]);
+    const totalPaidOut = paidOutAggregation.length > 0 ? paidOutAggregation[0].total : 0;
+    
+    const grossEarnings = totalEarnings - service_charge_amount;
+
     const text = `
-*📊 Your Dashboard*
+*📊 Your Financial Dashboard*
 
+*Summary:*
 📈 Total Revenue: *₹${totalEarnings.toFixed(2)}*
-_(Total sales generated)_
-
 ➖ Service Charge (${commission_percent}%): *- ₹${service_charge_amount.toFixed(2)}*
-_(Our platform fee)_
+------------------------------------
+💰 Gross Earnings: *₹${grossEarnings.toFixed(2)}*
+   _(${totalEarnings.toFixed(2)} - ${service_charge_amount.toFixed(2)})_
 
-💰 **Net Balance (Withdrawable):** **₹${walletBalance.toFixed(2)}**
+*Payouts:*
+💸 Total Paid Out: *- ₹${totalPaidOut.toFixed(2)}*
+------------------------------------
+✅ **Net Balance (Withdrawable):** **₹${walletBalance.toFixed(2)}**
 `;
 
     const keyboard = { inline_keyboard: [
@@ -110,6 +124,7 @@ _(Our platform fee)_
     if (messageId) await bot.editMessageText(text, { chat_id: chatId, message_id: messageId, parse_mode: 'Markdown', reply_markup: keyboard });
     else await bot.sendMessage(chatId, text, { parse_mode: 'Markdown', reply_markup: keyboard });
 }
+// --- END OF FIX ---
 
 async function showTransactionHistory(bot, chatId, owner, messageId) {
     const transactions = await Transaction.find({ owner_id: owner._id }).sort({ timestamp: -1 }).limit(10);
@@ -152,7 +167,6 @@ async function showChannelStats(bot, chatId, owner, messageId) {
     if (stats.length === 0) {
         text = "No sales data available for any channel yet.";
     } else {
-        // Fetch channel names to make it user-friendly
         for (const stat of stats) {
             const channel = await ManagedChannel.findOne({ channel_id: stat._id });
             const channelName = channel ? channel.channel_name : `Deleted Channel (${stat._id})`;
