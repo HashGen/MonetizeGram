@@ -26,7 +26,7 @@ async function handleOwnerMessage(bot, msg) {
         } else if (state.awaiting === 'upi_id') {
             await handleUpiInput(bot, msg, owner);
         } else if (state.awaiting === 'edit_plans') {
-            await handlePlansInput(bot, msg, owner, true); // Pass 'true' for edit mode
+            await handlePlansInput(bot, msg, owner, true);
         }
         return;
     }
@@ -194,18 +194,37 @@ async function startAddChannelFlow(bot, chatId, fromId) {
     await bot.sendMessage(chatId, `Okay, let's add a new channel.\n\n*Step 1:* Make this bot an Admin in your channel.\n\n*Step 2:* Now, **forward any message** from that channel here.`, { parse_mode: "Markdown" });
 }
 
+// --- THIS IS THE FIX ---
 async function showDashboard(bot, chatId, owner, messageId = null) {
-    const text = `*Your Dashboard*\n\n💰 Wallet Balance: ₹${owner.wallet_balance.toFixed(2)}\n📈 Total Earnings: ₹${owner.total_earnings.toFixed(2)}`;
+    const commission_percent = parseFloat(process.env.PLATFORM_COMMISSION_PERCENT);
+    const totalEarnings = owner.total_earnings || 0;
+    const service_charge_amount = (totalEarnings * commission_percent) / 100;
+    const walletBalance = owner.wallet_balance || 0;
+
+    const text = `
+*📊 Your Dashboard*
+
+📈 Total Revenue: *₹${totalEarnings.toFixed(2)}*
+_(Total sales generated)_
+
+➖ Service Charge (${commission_percent}%): *- ₹${service_charge_amount.toFixed(2)}*
+_(Our platform fee for providing this service)_
+
+💰 **Net Balance (Withdrawable):** **₹${walletBalance.toFixed(2)}**
+`;
+
     const keyboard = { inline_keyboard: [
         [{ text: "💸 Request Withdrawal", callback_data: "owner_withdraw" }],
         [{ text: "⬅️ Back to Main Menu", callback_data: "owner_mainmenu" }]
     ]};
+
     if (messageId) {
         await bot.editMessageText(text, { chat_id: chatId, message_id: messageId, parse_mode: 'Markdown', reply_markup: keyboard });
     } else {
         await bot.sendMessage(chatId, text, { parse_mode: 'Markdown', reply_markup: keyboard });
     }
 }
+// --- END OF FIX ---
 
 async function startWithdrawalFlow(bot, chatId, owner) {
     const minWithdrawal = parseFloat(process.env.MINIMUM_WITHDRAWAL_AMOUNT);
