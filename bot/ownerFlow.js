@@ -175,6 +175,11 @@ You can check the status of all your past and pending requests in your dashboard
     }
 };
 
+// This function receives the userStates "Diary" from server.js
+function initializeOwnerFlow(states) {
+    userStates = states;
+}
+
 async function handleOwnerMessage(bot, msg) {
     const fromId = msg.from.id.toString();
     const text = msg.text || "";
@@ -186,16 +191,12 @@ async function handleOwnerMessage(bot, msg) {
         return bot.sendMessage(fromId, `❌ Your account is currently banned. Please contact support: @${process.env.SUPER_ADMIN_USERNAME}`);
     }
     
-    // --- THIS IS THE FIX ---
     // If user sends a command, always cancel any pending state
     if (text.startsWith('/')) {
         if (userStates[fromId]) {
             delete userStates[fromId];
-            // Optional: send a message that the process was cancelled
-            // await bot.sendMessage(fromId, "Previous action cancelled.");
         }
     }
-    // --- END OF FIX ---
 
     const state = userStates[fromId];
     if (state && state.awaiting) {
@@ -212,7 +213,6 @@ async function handleOwnerMessage(bot, msg) {
         case '/mychannels': await listMyChannels(bot, msg.chat.id, owner); break;
         case '/help': await showHelpMenu(bot, msg.chat.id, owner); break;
         default: 
-            // If we are in a state, but the text is not a command, it's a wrong input
             if (state && state.awaiting) {
                  await bot.sendMessage(fromId, `I'm waiting for specific information. Please provide it or send /start to go back to the main menu.`);
             } else {
@@ -227,7 +227,6 @@ async function handleOwnerCallback(bot, cbq) {
     const messageId = cbq.message.message_id;
     const data = cbq.data;
     
-    // --- THIS IS THE FIX ---
     // Clear any pending state when a button is clicked, as it starts a new flow
     delete userStates[fromId];
     
@@ -271,43 +270,7 @@ async function handleOwnerCallback(bot, cbq) {
     }
 }
 
-async function handleChannelForward(bot, msg, owner) {
-    const fromId = owner.telegram_id;
-    if (msg.forward_from_chat) {
-        const channelId = msg.forward_from_chat.id.toString();
-        const channelName = msg.forward_from_chat.title;
-        try {
-            const botMember = await bot.getChatMember(channelId, (await bot.getMe()).id);
-            if (botMember.status !== 'administrator') {
-                await bot.sendMessage(fromId, `❌ Bot is not an admin in "${channelName}". Please make the bot an admin and try again.`);
-                delete userStates[fromId]; return;
-            }
-            userStates[fromId] = { awaiting: 'plans', channel_id: channelId, channel_name: channelName };
-            await bot.sendMessage(fromId, `✅ Great! Bot is an admin in "${channelName}".\n\nNow, send subscription plans in this format:\n\n\`30 days 100 rs\`\n\`90 days 250 rs\`\n\n_(To cancel, send /start)_`, { parse_mode: 'Markdown' });
-        } catch (error) {
-            await bot.sendMessage(fromId, `❌ An error occurred. Please make sure the bot is an admin in your channel and try again.`);
-            delete userStates[fromId];
-        }
-    } else {
-        await bot.sendMessage(fromId, `That was not a forwarded message. Please forward a message from your channel or send /start to cancel.`);
-    }
-};
-
-async function startAddChannelFlow(bot, chatId, fromId) {
-    userStates[fromId] = { awaiting: 'channel_forward' };
-    await bot.sendMessage(chatId, `Okay, let's add a new channel.\n\n*Step 1:* Make this bot an Admin in your channel.\n\n*Step 2:* Now, **forward any message** from that channel here.\n\n_(To cancel this process at any time, just send /start)_`, { parse_mode: "Markdown" });
-}
-async function startWithdrawalFlow(bot, chatId, owner) {
-    const minWithdrawal = parseFloat(process.env.MINIMUM_WITHDRAWAL_AMOUNT);
-    if (owner.wallet_balance < minWithdrawal) {
-        await bot.sendMessage(chatId, `❌ Sorry, you need at least ₹${minWithdrawal.toFixed(2)} to request a withdrawal. Your current balance is ₹${owner.wallet_balance.toFixed(2)}.`);
-        return;
-    }
-    userStates[owner.telegram_id] = { awaiting: 'upi_id' };
-    await bot.sendMessage(chatId, `Your current withdrawable balance is ₹${owner.wallet_balance.toFixed(2)}.\n\nPlease enter your UPI ID:\n\n_(To cancel, send /start)_`, {parse_mode: 'Markdown'});
-}
-
-// ... (Rest of the functions are unchanged, but provided below for completeness)
+async function handleChannelForward(bot, msg, owner) { const fromId = owner.telegram_id; if (msg.forward_from_chat) { const channelId = msg.forward_from_chat.id.toString(); const channelName = msg.forward_from_chat.title; try { const botMember = await bot.getChatMember(channelId, (await bot.getMe()).id); if (botMember.status !== 'administrator') { await bot.sendMessage(fromId, `❌ Bot is not an admin in "${channelName}". Please make the bot an admin and try again.`); delete userStates[fromId]; return; } userStates[fromId] = { awaiting: 'plans', channel_id: channelId, channel_name: channelName }; await bot.sendMessage(fromId, `✅ Great! Bot is an admin in "${channelName}".\n\nNow, send subscription plans in this format:\n\n\`30 days 100 rs\`\n\`90 days 250 rs\`\n\n_(To cancel, send /start)_`, { parse_mode: 'Markdown' }); } catch (error) { await bot.sendMessage(fromId, `❌ An error occurred. Please make sure the bot is an admin in your channel and try again.`); delete userStates[fromId]; } } else { await bot.sendMessage(fromId, `That was not a forwarded message. Please forward a message from your channel or send /start to cancel.`); }};
 async function showMainMenu(bot, chatId, owner, text = "Welcome, Channel Owner!", messageId = null) { const keyboard = { inline_keyboard: [ [{ text: "📊 My Dashboard", callback_data: "owner_dashboard" }, { text: "➕ Add a New Channel", callback_data: "owner_add" }], [{ text: "📺 My Channels", callback_data: "owner_mychannels" }, { text: "❓ Help & Support", callback_data: "owner_help" }] ]}; if (messageId) await bot.editMessageText(text, { chat_id: chatId, message_id: messageId, reply_markup: keyboard }); else await bot.sendMessage(chatId, text, { reply_markup: keyboard }); }
 async function showHelpMenu(bot, chatId, owner, messageId = null) { const lang = owner.language || 'en'; const otherLang = lang === 'en' ? 'hi' : 'en'; const langText = lang === 'en' ? '🇮🇳 हिंदी में स्विच करें' : '🇬🇧 Switch to English'; const help = LANGUAGES[lang].HELP_TEXTS; const keyboard = { inline_keyboard: [ [{ text: "🚀 Getting Started", callback_data: "owner_helpsection_gettingStarted" }], [{ text: "📊 Understanding Dashboard", callback_data: "owner_helpsection_dashboard" }], [{ text: "📺 Managing Channels", callback_data: "owner_helpsection_managingChannels" }], [{ text: "💸 Withdrawal Process", callback_data: "owner_helpsection_withdrawals" }], [{ text: langText, callback_data: `owner_setlang_${otherLang}`}], [{ text: "⬅️ Back to Main Menu", callback_data: "owner_mainmenu" }] ]}; if(messageId) await bot.editMessageText(help.main, { chat_id: chatId, message_id: messageId, parse_mode: 'Markdown', reply_markup: keyboard }); else await bot.sendMessage(chatId, help.main, { parse_mode: 'Markdown', reply_markup: keyboard }); }
 async function handlePlansInput(bot, msg, owner, isEdit = false) { const fromId = owner.telegram_id; const state = userStates[fromId]; const lines = msg.text.split('\n'); const plans = []; let parseError = false; for (const line of lines) { const parts = line.match(/(\d+)\s+days?\s+(\d+)\s+rs?/i); if (parts) { plans.push({ days: parseInt(parts[1]), price: parseInt(parts[2]) }); } else if (line.trim() !== '') { parseError = true; break; } } if (parseError || plans.length === 0) { await bot.sendMessage(fromId, `❌ Invalid format. Please use the format like: \`30 days 100 rs\`. Try again, or send /start to cancel.`); } else { if (isEdit) { await ManagedChannel.findByIdAndUpdate(state.channel_db_id, { plans: plans }); await bot.sendMessage(fromId, `✅ Plans updated successfully!`); } else { const uniqueKey = nanoid(8); await ManagedChannel.create({ owner_id: owner._id, channel_id: state.channel_id, channel_name: state.channel_name, unique_start_key: uniqueKey, plans: plans }); const link = `https://t.me/${(await bot.getMe()).username}?start=${uniqueKey}`; await bot.sendMessage(fromId, `✅ Channel Added Successfully!\n\nShare this link with your users:\n\n\`${link}\``, { parse_mode: 'Markdown' }); } delete userStates[fromId]; }};
@@ -317,6 +280,8 @@ async function showDashboard(bot, chatId, owner, messageId = null) { const commi
 async function showTransactionHistory(bot, chatId, owner, messageId) { const transactions = await Transaction.find({ owner_id: owner._id }).sort({ timestamp: -1 }).limit(10); let text = "*📜 Last 10 Transactions:*\n\n"; if (transactions.length === 0) { text = "You have no transactions yet."; } else { transactions.forEach(t => { const date = new Date(t.timestamp).toLocaleDateString('en-IN'); text += `*Sale:* +₹${t.amount_paid.toFixed(2)} | *Fee:* -₹${t.commission_charged.toFixed(2)} | *Net:* +₹${t.amount_credited_to_owner.toFixed(2)} _(${date})_\n`; }); } const keyboard = { inline_keyboard: [[{ text: "⬅️ Back to Dashboard", callback_data: "owner_dashboard" }]] }; await bot.editMessageText(text, { chat_id: chatId, message_id: messageId, parse_mode: 'Markdown', reply_markup: keyboard }); }
 async function showWithdrawalHistory(bot, chatId, owner, messageId) { const withdrawals = await Withdrawal.find({ owner_id: owner._id }).sort({ requested_at: -1 }).limit(10); let text = "*💸 Last 10 Withdrawals:*\n\n"; if (withdrawals.length === 0) { text = "You have no withdrawal history."; } else { const status_emoji = { pending: '⌛️', approved: '✅', rejected: '❌' }; withdrawals.forEach(w => { const date = new Date(w.requested_at).toLocaleDateString('en-IN'); text += `${status_emoji[w.status]} *₹${w.amount.toFixed(2)}* to ${w.upi_id} _(${date})_ - *${w.status}*\n`; }); } const keyboard = { inline_keyboard: [[{ text: "⬅️ Back to Dashboard", callback_data: "owner_dashboard" }]] }; await bot.editMessageText(text, { chat_id: chatId, message_id: messageId, parse_mode: 'Markdown', reply_markup: keyboard }); }
 async function showChannelStats(bot, chatId, owner, messageId) { const stats = await Transaction.aggregate([ { $match: { owner_id: owner._id } }, { $group: { _id: '$channel_id', totalRevenue: { $sum: '$amount_paid' }, count: { $sum: 1 } } } ]); let text = "*📺 Channel-wise Earnings:*\n\n"; if (stats.length === 0) { text = "No sales data available for any channel yet."; } else { for (const stat of stats) { const channel = await ManagedChannel.findOne({ channel_id: stat._id }); const channelName = channel ? channel.channel_name : `Deleted Channel (${stat._id})`; text += `*${channelName}:*\n- Total Revenue: *₹${stat.totalRevenue.toFixed(2)}*\n- Total Sales: *${stat.count}*\n\n`; } } const keyboard = { inline_keyboard: [[{ text: "⬅️ Back to Dashboard", callback_data: "owner_dashboard" }]] }; await bot.editMessageText(text, { chat_id: chatId, message_id: messageId, parse_mode: 'Markdown', reply_markup: keyboard }); }
+async function startAddChannelFlow(bot, chatId, fromId) { userStates[fromId] = { awaiting: 'channel_forward' }; await bot.sendMessage(chatId, `Okay, let's add a new channel.\n\n*Step 1:* Make this bot an Admin in your channel.\n\n*Step 2:* Now, **forward any message** from that channel here.\n\n_(To cancel this process, just send /start)_`, { parse_mode: "Markdown" }); }
+async function startWithdrawalFlow(bot, chatId, owner) { const minWithdrawal = parseFloat(process.env.MINIMUM_WITHDRAWAL_AMOUNT); if (owner.wallet_balance < minWithdrawal) { await bot.sendMessage(chatId, `❌ Sorry, you need at least ₹${minWithdrawal.toFixed(2)} to request a withdrawal. Your current balance is ₹${owner.wallet_balance.toFixed(2)}.`); return; } userStates[owner.telegram_id] = { awaiting: 'upi_id' }; await bot.sendMessage(chatId, `Your current withdrawable balance is ₹${owner.wallet_balance.toFixed(2)}.\n\nPlease enter your UPI ID:\n\n_(To cancel, send /start)_`, {parse_mode: 'Markdown'}); }
 async function listMyChannels(bot, chatId, owner, messageId = null) { const channels = await ManagedChannel.find({ owner_id: owner._id }); let text = "*Your Connected Channels:*\n\n"; const keyboardRows = []; if (channels.length === 0) { text = "You haven't connected any channels yet."; } else { channels.forEach(ch => { keyboardRows.push([{ text: ch.channel_name, callback_data: `none` }, { text: "⚙️ Manage", callback_data: `owner_managechannel_${ch._id}` }]); }); } keyboardRows.push([{ text: "⬅️ Back to Main Menu", callback_data: "owner_mainmenu" }]); const opts = { chat_id: chatId, parse_mode: 'Markdown', reply_markup: { inline_keyboard: keyboardRows } }; if(messageId) { opts.message_id = messageId; await bot.editMessageText(text, opts); } else { await bot.sendMessage(chatId, text, opts); } }
 async function showChannelManagementMenu(bot, chatId, channelDbId, messageId) { const channel = await ManagedChannel.findById(channelDbId); if (!channel) { await bot.editMessageText("Sorry, this channel was not found.", { chat_id: chatId, message_id: messageId }); return; } const text = `Managing channel: *${channel.channel_name}*`; const keyboard = { inline_keyboard: [ [{ text: "✏️ Edit Plans", callback_data: `owner_editplans_${channelDbId}` }, { text: "🔗 Get Link", callback_data: `owner_getlink_${channelDbId}` }], [{ text: "🗑️ Remove Channel", callback_data: `owner_removechannel_${channelDbId}` }], [{ text: "⬅️ Back to My Channels", callback_data: "owner_mychannels" }] ]}; await bot.editMessageText(text, { chat_id: chatId, message_id: messageId, parse_mode: 'Markdown', reply_markup: keyboard }); }
 async function sendChannelLink(bot, chatId, channelDbId) { const channel = await ManagedChannel.findById(channelDbId); const link = `https://t.me/${(await bot.getMe()).username}?start=${channel.unique_start_key}`; await bot.sendMessage(chatId, `Here is the subscriber link for *${channel.channel_name}*:\n\n\`${link}\``, { parse_mode: 'Markdown' }); }
