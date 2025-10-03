@@ -1,10 +1,9 @@
-// subscriberFlow.js (UPDATED)
+// subscriberFlow.js (UPDATED & COMPLETE)
 
 const ManagedChannel = require('../models/managedChannel.model');
 const PendingPayment = require('../models/pendingPayment.model');
 
-// server.js se naya function import kar rahe hain
-// IMPORTANT: Path check kar lena. Agar subscriberFlow.js 'bot' folder ke andar hai to '../server' theek hai.
+// server.js se function import kar rahe hain
 const { generateAndVerifyUniqueAmount } = require('../server');
 
 let botInstance;
@@ -16,6 +15,7 @@ function initializeSubscriberFlow(bot, userStates) {
 }
 
 async function handleSubscriberMessage(bot, msg) {
+    // Is function mein koi change nahi hai
     const chatId = msg.chat.id;
     const text = msg.text;
 
@@ -77,13 +77,10 @@ async function handleSubscriberCallback(bot, cbq) {
         }
 
         try {
-            // --- THIS IS THE FIX ---
-            // OLD WAY: const uniqueAmount = `${plan.price}.${Math.floor(Math.random() * 90) + 10}`;
-            // NEW, SAFE WAY:
             const uniqueAmount = await generateAndVerifyUniqueAmount(plan.price);
-            // --- END OF FIX ---
             
-            await PendingPayment.create({
+            // Database mein entry create karo
+            const pendingDoc = await PendingPayment.create({
                 unique_amount: uniqueAmount,
                 subscriber_id: fromId,
                 owner_id: channel.owner_id,
@@ -96,13 +93,45 @@ async function handleSubscriberCallback(bot, cbq) {
             await botInstance.sendMessage(process.env.SUPER_ADMIN_ID, `🔔 New Payment Link Generated:\n\nUser: \`${fromId}\`\nAmount: \`₹${uniqueAmount}\`\nChannel: ${channel.channel_name}`, { parse_mode: 'Markdown'});
             
             const paymentUrl = `${process.env.YOUR_DOMAIN}/?amount=${uniqueAmount}`;
-            await bot.sendMessage(fromId, `Great! To get the *${plan.days} Days Plan*, please pay exactly *₹${uniqueAmount}* using the link below.`, {
+            
+            // User ko payment button bhejo aur message ko save karo
+            const sentMessage = await bot.sendMessage(fromId, `Great! To get the *${plan.days} Days Plan*, please pay exactly *₹${uniqueAmount}* using the link below.\n\n*This link will expire in 5 minutes.*`, {
                 parse_mode: 'Markdown',
                 reply_markup: {
                     inline_keyboard: [[{ text: `Pay ₹${uniqueAmount} Now`, url: paymentUrl }]]
                 }
             });
+            
             await bot.answerCallbackQuery(cbq.id);
+
+            // --- YAHAN SE HOGA MAGIC ---
+            // 5 MINUTE KA TIMER SET KARO (300000 milliseconds)
+            setTimeout(async () => {
+                try {
+                    // 5 min baad, database se is entry ko delete karne ki koshish karo
+                    const deletedPayment = await PendingPayment.findOneAndDelete({ _id: pendingDoc._id });
+
+                    // Agar entry delete hui (matlab user ne payment nahi ki thi)
+                    if (deletedPayment) {
+                        console.log(`Expired payment link for ₹${uniqueAmount} deleted for user ${fromId}`);
+                        // User ke chat mein jaakar purane message ko EDIT kar do
+                        await bot.editMessageText(
+                            `❌ **Payment Link Expired**\n\nThe link for amount ₹${uniqueAmount} has expired. Please generate a new one.`, 
+                            {
+                                chat_id: sentMessage.chat.id,
+                                message_id: sentMessage.message_id,
+                                reply_markup: { // Button hata do
+                                    inline_keyboard: []
+                                }
+                            }
+                        );
+                    }
+                } catch (error) {
+                    // Agar message edit karte waqt error aaye (ho sakta hai user ne chat delete kar di ho)
+                    // toh bas console mein log kardo, bot crash nahi hoga
+                    console.error(`Could not edit expired payment message for user ${fromId}:`, error.message);
+                }
+            }, 300000); // 5 minutes in milliseconds
 
         } catch (error) {
             console.error("Error generating unique amount or creating pending payment:", error);
