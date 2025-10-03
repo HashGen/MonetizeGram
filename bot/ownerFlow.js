@@ -5,7 +5,7 @@ const ManagedChannel = require('../models/managedChannel.model');
 const Withdrawal = require('../models/withdrawal.model');
 const Transaction = require('../models/transaction.model');
 // SERVER.JS SE NAYA FUNCTION IMPORT KAR RAHE HAIN
-const { generateAndVerifyUniqueAmount } = require('../server');
+const { generateAndVerifyUniqueAmount } = require('../helpers');
 const { nanoid } = require('nanoid');
 
 let userStates;
