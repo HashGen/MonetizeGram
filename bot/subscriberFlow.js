@@ -1,16 +1,19 @@
+// subscriberFlow.js (UPDATED)
+
 const ManagedChannel = require('../models/managedChannel.model');
 const PendingPayment = require('../models/pendingPayment.model');
+
+// server.js se naya function import kar rahe hain
+// IMPORTANT: Path check kar lena. Agar subscriberFlow.js 'bot' folder ke andar hai to '../server' theek hai.
+const { generateAndVerifyUniqueAmount } = require('../server');
 
 let botInstance;
 let userStatesRef;
 
-// --- THIS IS THE FIX ---
-// The function name is now correct
 function initializeSubscriberFlow(bot, userStates) {
     botInstance = bot;
     userStatesRef = userStates;
 }
-// --- END OF FIX ---
 
 async function handleSubscriberMessage(bot, msg) {
     const chatId = msg.chat.id;
@@ -73,33 +76,44 @@ async function handleSubscriberCallback(bot, cbq) {
             return;
         }
 
-        const uniqueAmount = `${plan.price}.${Math.floor(Math.random() * 90) + 10}`;
-        
-        await PendingPayment.create({
-            unique_amount: uniqueAmount,
-            subscriber_id: fromId,
-            owner_id: channel.owner_id,
-            channel_id: channel.channel_id,
-            plan_days: plan.days,
-            plan_price: plan.price,
-            channel_id_mongoose: channel._id
-        });
-        
-        await botInstance.sendMessage(process.env.SUPER_ADMIN_ID, `🔔 New Payment Link Generated:\n\nUser: \`${fromId}\`\nAmount: \`₹${uniqueAmount}\`\nChannel: ${channel.channel_name}`, { parse_mode: 'Markdown'});
-        
-        const paymentUrl = `${process.env.YOUR_DOMAIN}/?amount=${uniqueAmount}`;
-        await bot.sendMessage(fromId, `Great! To get the *${plan.days} Days Plan*, please pay exactly *₹${uniqueAmount}* using the link below.`, {
-            parse_mode: 'Markdown',
-            reply_markup: {
-                inline_keyboard: [[{ text: `Pay ₹${uniqueAmount} Now`, url: paymentUrl }]]
-            }
-        });
-        await bot.answerCallbackQuery(cbq.id);
+        try {
+            // --- THIS IS THE FIX ---
+            // OLD WAY: const uniqueAmount = `${plan.price}.${Math.floor(Math.random() * 90) + 10}`;
+            // NEW, SAFE WAY:
+            const uniqueAmount = await generateAndVerifyUniqueAmount(plan.price);
+            // --- END OF FIX ---
+            
+            await PendingPayment.create({
+                unique_amount: uniqueAmount,
+                subscriber_id: fromId,
+                owner_id: channel.owner_id,
+                channel_id: channel.channel_id,
+                plan_days: plan.days,
+                plan_price: plan.price,
+                channel_id_mongoose: channel._id
+            });
+            
+            await botInstance.sendMessage(process.env.SUPER_ADMIN_ID, `🔔 New Payment Link Generated:\n\nUser: \`${fromId}\`\nAmount: \`₹${uniqueAmount}\`\nChannel: ${channel.channel_name}`, { parse_mode: 'Markdown'});
+            
+            const paymentUrl = `${process.env.YOUR_DOMAIN}/?amount=${uniqueAmount}`;
+            await bot.sendMessage(fromId, `Great! To get the *${plan.days} Days Plan*, please pay exactly *₹${uniqueAmount}* using the link below.`, {
+                parse_mode: 'Markdown',
+                reply_markup: {
+                    inline_keyboard: [[{ text: `Pay ₹${uniqueAmount} Now`, url: paymentUrl }]]
+                }
+            });
+            await bot.answerCallbackQuery(cbq.id);
+
+        } catch (error) {
+            console.error("Error generating unique amount or creating pending payment:", error);
+            await bot.sendMessage(fromId, "Sorry, something went wrong while generating your payment link. Please try again.");
+            await bot.answerCallbackQuery(cbq.id, { text: "Error. Please try again.", show_alert: true });
+        }
     }
 }
 
 module.exports = {
-    initializeSubscriberFlow, // Now it's correctly exported
+    initializeSubscriberFlow,
     handleSubscriberMessage,
     handleSubscriberCallback
 };
