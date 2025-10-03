@@ -4,7 +4,7 @@ const ManagedChannel = require('../models/managedChannel.model');
 const PendingPayment = require('../models/pendingPayment.model');
 
 // server.js se function import kar rahe hain
-const { generateAndVerifyUniqueAmount } = require('../server');
+const { generateAndVerifyUniqueAmount } = require('../helpers');
 
 let botInstance;
 let userStatesRef;
