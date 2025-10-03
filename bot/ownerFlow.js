@@ -1,17 +1,16 @@
-// ownerFlow.js (UPDATED)
-
 const Owner = require('../models/owner.model');
 const ManagedChannel = require('../models/managedChannel.model');
 const Withdrawal = require('../models/withdrawal.model');
 const Transaction = require('../models/transaction.model');
-// SERVER.JS SE NAYA FUNCTION IMPORT KAR RAHE HAIN
-const { generateAndVerifyUniqueAmount } = require('../helpers');
 const { nanoid } = require('nanoid');
+// helpers.js se naya function import kar rahe hain
+const { generateAndVerifyUniqueAmount } = require('../helpers');
 
+// This object will be passed from server.js to store user's current action
 let userStates;
 
+// --- MULTI-LANGUAGE HELP TEXTS (UNCHANGED) ---
 const LANGUAGES = {
-    /* ... AAPKA LANGUAGE OBJECT (NO CHANGE) ... */
     en: {
         HELP_TEXTS: {
             main: "Welcome to the Help Center! I am here to guide you. Please choose a topic below to learn more.",
@@ -97,6 +96,7 @@ You can check the status of all your past and pending requests in your dashboard
         }
     },
     hi: {
+        /* ... HINDI TEXTS (UNCHANGED) ... */
         HELP_TEXTS: {
             main: "सहायता केंद्र में आपका स्वागत है! मैं आपकी मदद करने के लिए यहाँ हूँ। कृपया नीचे एक विषय चुनें।",
             gettingStarted: `*🚀 शुरुआत करें: अपना चैनल कैसे जोड़ें*\n\nअपने चैनल को हमारे प्लेटफॉर्म से जोड़ने और कमाई शुरू करने के लिए यह एक सरल 3-चरणीय प्रक्रिया है।
@@ -223,14 +223,13 @@ async function handleOwnerMessage(bot, msg) {
 }
 
 async function handleOwnerCallback(bot, cbq) {
-    // ... AAPKA PURANA CODE (NO CHANGE) ...
     const fromId = cbq.from.id.toString();
     const chatId = cbq.message.chat.id;
     const messageId = cbq.message.message_id;
     const data = cbq.data;
     
-    // Clear any pending state when a button is clicked, as it starts a new flow
-    delete userStates[fromId];
+    // --- THIS LINE IS REMOVED TO FIX THE BUTTON PROBLEM ---
+    // delete userStates[fromId];
     
     let owner = await Owner.findOne({ telegram_id: fromId });
     if (!owner) {
@@ -242,6 +241,12 @@ async function handleOwnerCallback(bot, cbq) {
     const parts = data.split('_');
     const command = parts[1];
     const objectId = parts[2];
+
+    // Some actions don't need the state, so we can clear it for them
+    const actionsThatClearState = ['mainmenu', 'add', 'dashboard', 'mychannels', 'help', 'setlang', 'helpsection', 'transactions', 'withdrawalhistory', 'channelstats', 'managechannel', 'getlink', 'removechannel'];
+    if (actionsThatClearState.includes(command)) {
+        delete userStates[fromId];
+    }
 
     switch (command) {
         case 'mainmenu': await showMainMenu(bot, chatId, owner, "Welcome Back!", messageId); break;
@@ -268,7 +273,10 @@ async function handleOwnerCallback(bot, cbq) {
         case 'removechannel': await confirmRemoveChannel(bot, chatId, objectId, messageId); break;
         case 'confirmremove': await removeChannel(bot, chatId, objectId, messageId); break;
         case 'withdrawconfirm': await handleWithdrawConfirm(bot, cbq, owner); break;
-        case 'withdrawcancel': delete userStates[fromId]; await bot.editMessageText("Withdrawal request cancelled.", { chat_id: chatId, message_id: messageId }); break;
+        case 'withdrawcancel': 
+            delete userStates[fromId]; 
+            await bot.editMessageText("Withdrawal request cancelled.", { chat_id: chatId, message_id: messageId }); 
+            break;
     }
 }
 
@@ -278,41 +286,39 @@ async function handleWithdrawConfirm(bot, cbq, owner) {
 
     if (state && state.awaiting === 'withdraw_confirm') {
         try {
-            // --- THIS IS THE FIX ---
-            // Naye function ko call karke unique amount nikalenge
             const uniqueAmountForWithdrawal = await generateAndVerifyUniqueAmount(state.amount);
-            // --- END OF FIX ---
-            
-            // NOTE: Yahan 'Withdrawal' model use ho raha hai, 'PendingPayment' nahi. Agar aapko withdrawal ko bhi
-            // usi unique amount se track karna hai, to aapko 'Withdrawal' model mein 'unique_amount' field add karni hogi
-            // aur yahan save karna hoga. Filhaal main bas normal save kar raha hoon.
-            // Agar aapke Withdrawal model mein unique_amount field hai, to neeche wali line ko aise change karein:
-            // await Withdrawal.create({ owner_id: owner._id, amount: state.amount, unique_amount: uniqueAmountForWithdrawal, upi_id: state.upi_id });
 
             await Withdrawal.create({
                 owner_id: owner._id,
-                amount: state.amount, // Original amount save kar rahe hain
+                amount: state.amount,
+                unique_amount: uniqueAmountForWithdrawal,
                 upi_id: state.upi_id
             });
             
             await Owner.findByIdAndUpdate(owner._id, { $inc: { wallet_balance: -state.amount } });
             
-            await bot.editMessageText(`✅ Your withdrawal request for **₹${state.amount.toFixed(2)}** has been submitted. It will be processed within 24 hours.`, {
-                chat_id: cbq.message.chat.id,
-                message_id: cbq.message.message_id,
-                parse_mode: 'Markdown'
-            });
+            await bot.editMessageText(
+                `✅ Your withdrawal request for **₹${state.amount.toFixed(2)}** has been submitted.\n\nIt will be processed within 24 hours.`,
+                {
+                    chat_id: cbq.message.chat.id,
+                    message_id: cbq.message.message_id,
+                    parse_mode: 'Markdown'
+                }
+            );
             
-            // Admin ko original amount hi bhejna hai, unique wala nahi
-            await bot.sendMessage(process.env.SUPER_ADMIN_ID, `🔔 **New Withdrawal Request!**\n\nOwner: ${owner.first_name} (\`${owner.telegram_id}\`)\nAmount: \`₹${state.amount.toFixed(2)}\`\nUPI ID: \`${state.upi_id}\``, { parse_mode: 'Markdown' });
+            await bot.sendMessage(
+                process.env.SUPER_ADMIN_ID,
+                `🔔 **New Withdrawal Request!**\n\nOwner: ${owner.first_name} (\`${owner.telegram_id}\`)\nOriginal Amount: \`₹${state.amount.toFixed(2)}\`\n**Payable Unique Amount: \`₹${uniqueAmountForWithdrawal}\`**\nUPI ID: \`${state.upi_id}\``,
+                { parse_mode: 'Markdown' }
+            );
             
             delete userStates[fromId];
 
         } catch (error) {
-            console.error("Error during withdrawal confirmation:", error);
-            await bot.editMessageText("Sorry, something went wrong with your withdrawal request. Please try again later.", {
+            console.error("Error creating withdrawal request:", error);
+            await bot.editMessageText("❌ Sorry, an error occurred. Please try again.", {
                 chat_id: cbq.message.chat.id,
-                message_id: cbq.message.message_id,
+                message_id: cbq.message.message_id
             });
             delete userStates[fromId];
         }
@@ -320,7 +326,6 @@ async function handleWithdrawConfirm(bot, cbq, owner) {
 };
 
 // --- BAAKI SABHI FUNCTIONS UNCHANGED ---
-// (Yahan aapke baaki saare functions jaise showMainMenu, handlePlansInput etc. aa jayenge. Maine unko copy nahi kiya hai taaki reply chhota rahe. Aapko unmein koi change nahi karna hai)
 async function handleChannelForward(bot, msg, owner) { const fromId = owner.telegram_id; if (msg.forward_from_chat) { const channelId = msg.forward_from_chat.id.toString(); const channelName = msg.forward_from_chat.title; try { const botMember = await bot.getChatMember(channelId, (await bot.getMe()).id); if (botMember.status !== 'administrator') { await bot.sendMessage(fromId, `❌ Bot is not an admin in "${channelName}". Please make the bot an admin and try again.`); delete userStates[fromId]; return; } userStates[fromId] = { awaiting: 'plans', channel_id: channelId, channel_name: channelName }; await bot.sendMessage(fromId, `✅ Great! Bot is an admin in "${channelName}".\n\nNow, send subscription plans in this format:\n\n\`30 days 100 rs\`\n\`90 days 250 rs\`\n\n_(To cancel, send /start)_`, { parse_mode: 'Markdown' }); } catch (error) { await bot.sendMessage(fromId, `❌ An error occurred. Please make sure the bot is an admin in your channel and try again.`); delete userStates[fromId]; } } else { await bot.sendMessage(fromId, `That was not a forwarded message. Please forward a message from your channel or send /start to cancel.`); }};
 async function showMainMenu(bot, chatId, owner, text = "Welcome, Channel Owner!", messageId = null) { const keyboard = { inline_keyboard: [ [{ text: "📊 My Dashboard", callback_data: "owner_dashboard" }, { text: "➕ Add a New Channel", callback_data: "owner_add" }], [{ text: "📺 My Channels", callback_data: "owner_mychannels" }, { text: "❓ Help & Support", callback_data: "owner_help" }] ]}; if (messageId) await bot.editMessageText(text, { chat_id: chatId, message_id: messageId, reply_markup: keyboard }); else await bot.sendMessage(chatId, text, { reply_markup: keyboard }); }
 async function showHelpMenu(bot, chatId, owner, messageId = null) { const lang = owner.language || 'en'; const otherLang = lang === 'en' ? 'hi' : 'en'; const langText = lang === 'en' ? '🇮🇳 हिंदी में स्विच करें' : '🇬🇧 Switch to English'; const help = LANGUAGES[lang].HELP_TEXTS; const keyboard = { inline_keyboard: [ [{ text: "🚀 Getting Started", callback_data: "owner_helpsection_gettingStarted" }], [{ text: "📊 Understanding Dashboard", callback_data: "owner_helpsection_dashboard" }], [{ text: "📺 Managing Channels", callback_data: "owner_helpsection_managingChannels" }], [{ text: "💸 Withdrawal Process", callback_data: "owner_helpsection_withdrawals" }], [{ text: langText, callback_data: `owner_setlang_${otherLang}`}], [{ text: "⬅️ Back to Main Menu", callback_data: "owner_mainmenu" }] ]}; if(messageId) await bot.editMessageText(help.main, { chat_id: chatId, message_id: messageId, parse_mode: 'Markdown', reply_markup: keyboard }); else await bot.sendMessage(chatId, help.main, { parse_mode: 'Markdown', reply_markup: keyboard }); }
