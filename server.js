@@ -1,4 +1,4 @@
-// --- START OF FINAL PERMANENT FIX server.js FILE ---
+// --- START OF server.js ---
 
 require('dotenv').config();
 const express = require('express');
@@ -13,8 +13,9 @@ const Transaction = require('./models/transaction.model');
 const PendingPayment = require('./models/pendingPayment.model');
 const Report = require('./models/report.model');
 
-// Bot Logic (Now integrated directly into this file for simplicity)
+// Bot Logic
 const { handleOwnerMessage, handleOwnerCallback, initializeOwnerFlow } = require('./bot/ownerFlow');
+const { handleSubscriberMessage, handleSubscriberCallback, initializeSubscriberFlow } = require('./bot/subscriberFlow');
 
 // --- HELPER FUNCTION TO ESCAPE TELEGRAM MARKDOWN ---
 function escapeMarkdownV2(text) {
@@ -24,7 +25,7 @@ function escapeMarkdownV2(text) {
 }
 
 // Config
-const { PORT, MONGO_URI, BOT_TOKEN, SUPER_ADMIN_ID, SUPER_ADMIN_USERNAME, AUTOMATION_SECRET, PLATFORM_COMMISSION_PERCENT, CRON_SECRET, RENDER_EXTERNAL_URL } = process.env;
+const { PORT, MONGO_URI, BOT_TOKEN, SUPER_ADMIN_ID, SUPER_ADMIN_USERNAME, AUTOMATION_SECRET, PLATFORM_COMMISSION_PERCENT, CRON_SECRET } = process.env;
 if (!MONGO_URI || !BOT_TOKEN || !SUPER_ADMIN_ID || !SUPER_ADMIN_USERNAME || !CRON_SECRET) {
     console.error("FATAL ERROR: Missing critical environment variables.");
     process.exit(1);
@@ -42,6 +43,7 @@ try {
 const userStates = {};
 app.use(express.json()); app.use(express.text()); app.use(express.static('public'));
 
+initializeSubscriberFlow(bot, userStates);
 initializeOwnerFlow(userStates);
 
 mongoose.connect(MONGO_URI).then(() => console.log('✅ MongoDB Connected!')).catch(err => { console.error('❌ MongoDB Connection Error:', err); process.exit(1); });
@@ -100,6 +102,8 @@ async function generateAndVerifyUniqueAmount(baseAmount) {
     }
     throw new Error(`Failed to generate a unique payment amount after trying ${maxBaseAttempts} different base ranges.`);
 }
+global.generateAndVerifyUniqueAmount = generateAndVerifyUniqueAmount;
+
 
 // --- PAYMENT & CRON LOGIC ---
 async function processPayment(amount, bot, method = "Unknown") {
@@ -107,7 +111,7 @@ async function processPayment(amount, bot, method = "Unknown") {
         const payment = await PendingPayment.findOneAndDelete({ unique_amount: amount });
         if (!payment) {
             if (method.startsWith("Manual")) {
-                await bot.sendMessage(SUPER_ADMIN_ID, `❌ *Verification Failed*\nNo pending payment found for amount \`₹${escapeMarkdownV2(amount)}\`\\.`, { parse_mode: 'MarkdownV2' });
+                await bot.sendMessage(SUPER_ADMIN_ID, `❌ *Verification Failed*\nNo pending payment found for amount \`₹${escapeMarkdownV2(String(amount))}\`\\.`, { parse_mode: 'MarkdownV2' });
             }
             return;
         }
@@ -134,67 +138,19 @@ async function processPayment(amount, bot, method = "Unknown") {
         await bot.sendMessage(SUPER_ADMIN_ID, adminMessage, { parse_mode: 'MarkdownV2' });
     } catch (error) {
         console.error("[processPayment] FATAL CRASH:", error);
-        const finalMessage = `❌ *CRITICAL ERROR* during payment processing for ₹${escapeMarkdownV2(amount)}\n\n*Error Details:*\n\`\`\`\n${error.message || 'Unknown error'}\n\`\`\``;
+        const finalMessage = `❌ *CRITICAL ERROR* during payment processing for ₹${escapeMarkdownV2(String(amount))}\n\n*Error Details:*\n\`\`\`\n${error.message || 'Unknown error'}\n\`\`\``;
         await bot.sendMessage(SUPER_ADMIN_ID, finalMessage, { parse_mode: 'MarkdownV2' });
     }
 }
 
-// --- SUBSCRIBER LOGIC ---
-async function handleSubscriberMessage(bot, msg) {
-    const fromId = msg.from.id.toString();
-    const text = msg.text || "";
-    if (text.startsWith('/start ')) {
-        const uniqueKey = text.split(' ')[1];
-        const channel = await ManagedChannel.findOne({ unique_start_key: uniqueKey }).populate('owner_id');
-        if (!channel) {
-            return bot.sendMessage(fromId, "This link seems to be invalid or expired\\. Please contact the channel owner for a new link\\.", { parse_mode: 'MarkdownV2' });
-        }
-        userStates[fromId] = { channel_id: channel.channel_id, channel_id_mongoose: channel._id, owner_id: channel.owner_id._id };
-        const safeChannelName = escapeMarkdownV2(channel.channel_name);
-        const welcomeMessage = `Welcome to *${safeChannelName}*\\!\n\nPlease select a subscription plan:`;
-        const planButtons = channel.plans.map(plan => ([{ text: `${plan.days} Days for ₹${plan.price}`, callback_data: `sub_plan_${plan.days}_${plan.price}` }]));
-        await bot.sendMessage(fromId, welcomeMessage, { parse_mode: 'MarkdownV2', reply_markup: { inline_keyboard: planButtons } });
-        return;
-    }
-    const defaultMessage = "Please use the special link provided by the channel owner to start the subscription process\\.";
-    await bot.sendMessage(fromId, defaultMessage, { parse_mode: 'MarkdownV2' });
-}
-
-async function handleSubscriberCallback(bot, callbackQuery) {
-    const fromId = callbackQuery.from.id.toString();
-    const data = callbackQuery.data;
-    if (data.startsWith('sub_plan_')) {
-        await bot.answerCallbackQuery(callbackQuery.id);
-        const parts = data.split('_');
-        const days = parseInt(parts[2], 10);
-        const price = parseFloat(parts[3]);
-        const state = userStates[fromId];
-        if (!state) {
-            return bot.sendMessage(fromId, "Something went wrong, your session has expired\\. Please use the start link again\\.", { parse_mode: 'MarkdownV2' });
-        }
-        try {
-            const uniqueAmount = await generateAndVerifyUniqueAmount(price);
-            const formattedAmount = uniqueAmount.toFixed(2);
-            await PendingPayment.create({ subscriber_id: fromId, owner_id: state.owner_id, channel_id: state.channel_id, channel_id_mongoose: state.channel_id_mongoose, plan_days: days, plan_price: price, unique_amount: uniqueAmount });
-            const paymentMessage = `Great\\! To get the *${days} Days Plan*, please pay exactly *₹${escapeMarkdownV2(formattedAmount)}* using the link below\\.\n\n*This link will expire in 5 minutes\\.*`;
-            const paymentUrl = `${RENDER_EXTERNAL_URL}/?amount=${formattedAmount}`;
-            await bot.sendMessage(fromId, paymentMessage, { parse_mode: 'MarkdownV2', reply_markup: { inline_keyboard: [[{ text: `Pay ₹${escapeMarkdownV2(formattedAmount)} Now`, url: paymentUrl }]] } });
-        } catch (error) {
-            console.error("Error generating payment link:", error);
-            await bot.sendMessage(fromId, "Sorry, we couldn't generate a payment link right now\\. Please try again in a moment\\.", { parse_mode: 'MarkdownV2' });
-        }
-    }
-}
-
-// --- MAIN TELEGRAM ROUTER ---
+// --- TELEGRAM ROUTER ---
 bot.on('message', async (msg) => {
     try {
         const fromId = msg.from.id.toString();
         const text = msg.text || "";
         const state = userStates[fromId];
         if (state && state.awaiting === 'report_reason') {
-            const { channelId } = state;
-            const channel = await ManagedChannel.findById(channelId).populate('owner_id');
+            const { channelId } = state; const channel = await ManagedChannel.findById(channelId).populate('owner_id');
             await Report.create({ reporter_id: fromId, reported_owner_id: channel.owner_id._id, reported_channel_id: channel._id, reason: text });
             await bot.sendMessage(fromId, "✅ Thank you for your report\\. The admin has been notified\\.", { parse_mode: 'MarkdownV2' });
             const safeOwnerName = escapeMarkdownV2(channel.owner_id.first_name);
@@ -202,20 +158,12 @@ bot.on('message', async (msg) => {
             const safeReason = escapeMarkdownV2(text);
             const reportMessage = `🚨 *New Report\\!* 🚨\n\n*From User:* \`${fromId}\`\n*Against Owner:* ${safeOwnerName} \\(\`${channel.owner_id.telegram_id}\`\\)\n*For Channel:* ${safeChannelName}\n\n*Reason:*\n${safeReason}`;
             await bot.sendMessage(SUPER_ADMIN_ID, reportMessage, { parse_mode: 'MarkdownV2' });
-            delete userStates[fromId];
-            return;
+            delete userStates[fromId]; return;
         }
-        if (fromId === SUPER_ADMIN_ID) {
-            const commandHandled = await handleSuperAdminCommands(bot, msg);
-            if (commandHandled) return;
-        }
-        if (text.startsWith('/start ')) {
-            return handleSubscriberMessage(bot, msg);
-        }
+        if (fromId === SUPER_ADMIN_ID) { const commandHandled = await handleSuperAdminCommands(bot, msg); if (commandHandled) return; }
+        if (text.startsWith('/start ')) { return handleSubscriberMessage(bot, msg); }
         const owner = await Owner.findOne({ telegram_id: fromId });
-        if (owner) {
-            return handleOwnerMessage(bot, msg);
-        }
+        if (owner) { return handleOwnerMessage(bot, msg); }
         return handleSubscriberMessage(bot, msg);
     } catch (error) {
         console.error("!!! MESSAGE HANDLER CRASHED !!!", error);
@@ -226,21 +174,11 @@ bot.on('message', async (msg) => {
 
 bot.on('callback_query', async (callbackQuery) => {
     try {
-        const fromId = callbackQuery.from.id.toString();
-        const data = callbackQuery.data || "";
-        if (fromId === SUPER_ADMIN_ID && data.startsWith('admin_')) return handleAdminCallback(bot, callbackQuery);
-        if (data.startsWith('sub_report_')) {
-            const channelId = data.split('_')[2];
-            userStates[fromId] = { awaiting: 'report_reason', channelId };
-            await bot.answerCallbackQuery(callbackQuery.id);
-            await bot.sendMessage(fromId, "Please describe the issue you are facing\\. Your message will be sent to the admin\\.", { parse_mode: 'MarkdownV2' });
-            return;
-        }
-        if (data.startsWith('sub_')) {
-            await handleSubscriberCallback(bot, callbackQuery);
-        } else if (data.startsWith('owner_')) {
-            await handleOwnerCallback(bot, callbackQuery);
-        }
+        const fromId = callbackQuery.from.id.toString(); const data = callbackQuery.data || "";
+        if (fromId === SUPER_ADMIN_ID && data.startsWith('admin_')) { return handleAdminCallback(bot, callbackQuery); }
+        if (data.startsWith('sub_report_')) { const channelId = data.split('_')[2]; userStates[fromId] = { awaiting: 'report_reason', channelId }; await bot.answerCallbackQuery(callbackQuery.id); await bot.sendMessage(fromId, "Please describe the issue you are facing\\. Your message will be sent to the admin\\.", { parse_mode: 'MarkdownV2' }); return; }
+        if (data.startsWith('sub_')) { await handleSubscriberCallback(bot, callbackQuery); }
+        else if (data.startsWith('owner_')) { await handleOwnerCallback(bot, callbackQuery); }
     } catch (error) {
         console.error("!!! CALLBACK HANDLER CRASHED !!!", error);
         const errorMessage = `🚨 *BOT CRASH in callback handler*\n\n*Error Details:*\n\`\`\`\n${error.message || 'Unknown error'}\n\`\`\``;
@@ -248,12 +186,12 @@ bot.on('callback_query', async (callbackQuery) => {
     }
 });
 
-bot.on('polling_error', (error) => console.error(`POLLING ERROR: ${error.code} - ${error.message}`));
+bot.on('polling_error', (error) => { console.error(`POLLING ERROR: ${error.code} - ${error.message}`); });
 
 console.log('🤖 Bot is running...');
-app.listen(PORT, () => console.log(`🚀 Server is running on http://localhost:${PORT}`));
+app.listen(PORT, () => { console.log(`🚀 Server is running on http://localhost:${PORT}`); });
 
-// --- ADMIN & OTHER UNCHANGED FUNCTIONS (COPIED HERE FOR COMPLETENESS) ---
+// --- ADMIN & OTHER FUNCTIONS ---
 async function checkSubscriptions(bot) { const now = new Date(); const expiredSubs = await Subscriber.find({ expires_at: { $lte: now } }).populate({ path: 'channel_id_mongoose', model: 'ManagedChannel' }); if (expiredSubs.length === 0) return 0; let removedCount = 0; for (const sub of expiredSubs) { try { const userId = sub.telegram_id; const channel = sub.channel_id_mongoose; if (!channel) { await Subscriber.findByIdAndDelete(sub._id); continue; } const channelId = channel.channel_id; await bot.kickChatMember(channelId, userId); await bot.unbanChatMember(channelId, userId); const renewButton = { inline_keyboard: [[{ text: "🔄 Renew Subscription", url: `https://t.me/${(await bot.getMe()).username}?start=${channel.unique_start_key}` }]] }; const safeChannelName = escapeMarkdownV2(channel.channel_name); await bot.sendMessage(userId, `⌛️ *Your Subscription Has Expired*\n\nYour subscription for "*${safeChannelName}*" has expired and you have been removed\\.`, { parse_mode: 'MarkdownV2', reply_markup: renewButton }); await Subscriber.findByIdAndDelete(sub._id); removedCount++; } catch (error) { console.error(`[CRON] Failed to process user ${sub.telegram_id}. Error: ${error.message}`); await Subscriber.findByIdAndDelete(sub._id); } } return removedCount; }
 async function deleteOldBannedAccounts() { const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000); const result = await Owner.deleteMany({ is_banned: true, banned_at: { $lte: sevenDaysAgo } }); return result.deletedCount; }
 async function handleSuperAdminCommands(bot, msg) { const text = msg.text || ""; const fromId = msg.from.id.toString(); if (text === '/superhelp') { const keyboard = { inline_keyboard: [[{ text: "🚨 Manual Verification", callback_data: "admin_superhelpsection_verification" }], [{ text: "👑 Admin Dashboard Explained", callback_data: "admin_superhelpsection_dashboard" }], [{ text: "🔑 Moderation Commands", callback_data: "admin_superhelpsection_moderation" }], ]}; await bot.sendMessage(fromId, "Welcome, Super Admin\\! This is your special help section\\.", { reply_markup: keyboard, parse_mode: 'MarkdownV2' }); return true; } const amountMatch = text.match(/(\d+\.\d{2})/); if (amountMatch && amountMatch[1]) { const amount = amountMatch[1]; await bot.sendMessage(fromId, `Received amount ₹${escapeMarkdownV2(amount)}\\. Attempting manual verification\\.\\.\\.`, { parse_mode: 'MarkdownV2' }); await processPayment(amount, bot, "Manual (Admin)"); return true; } if (text === '/viewowners') { const owners = await Owner.find({}).sort({ created_at: -1 }).limit(10); if (owners.length === 0) return bot.sendMessage(fromId, "No owners have registered yet\\.", { parse_mode: 'MarkdownV2' }); const keyboard = owners.map(o => ([{ text: `${escapeMarkdownV2(o.first_name)} (${o.telegram_id}) ${o.is_banned ? '- 🚫 BANNED' : ''}`, callback_data: `admin_inspect_${o._id}` }])); bot.sendMessage(fromId, "Here are the most recent owners\\. Select one to manage:", { reply_markup: { inline_keyboard: keyboard }, parse_mode: 'MarkdownV2' }); return true; } if (text.startsWith('/unban ')) { const ownerId = text.split(' ')[1]; const owner = await Owner.findOneAndUpdate({ telegram_id: ownerId }, { is_banned: false, $unset: { banned_at: "" } }); if (owner) { bot.sendMessage(owner.telegram_id, `✅ Good News\\! Your account has been unbanned by the admin\\.`, { parse_mode: 'MarkdownV2' }); bot.sendMessage(fromId, `✅ Owner ${escapeMarkdownV2(owner.first_name)} has been unbanned\\.`, { parse_mode: 'MarkdownV2' }); } else { bot.sendMessage(fromId, "Owner not found with that Telegram ID\\.", { parse_mode: 'MarkdownV2' }); } return true; } if (text.startsWith('/removesubscriber ')) { const parts = text.split(' '); if (parts.length !== 3) return bot.sendMessage(fromId, "Invalid format\\. Use:\n/removesubscriber <USER\\_ID> <CHANNEL\\_ID>", { parse_mode: 'MarkdownV2' }); const [, subscriberId, channelId] = parts; try { await bot.kickChatMember(channelId, subscriberId); await bot.unbanChatMember(channelId, subscriberId); const result = await Subscriber.deleteOne({ telegram_id: subscriberId, channel_id: channelId }); if (result.deletedCount > 0) { bot.sendMessage(subscriberId, "Your subscription has been manually revoked by an admin\\.").catch(() => { }); bot.sendMessage(fromId, `✅ Success\\! User ${subscriberId} removed from channel ${channelId}\\.`, { parse_mode: 'MarkdownV2' }); } else { bot.sendMessage(fromId, `⚠️ User ${subscriberId} not in DB for channel ${channelId}, but kick command sent\\.`, { parse_mode: 'MarkdownV2' }); } } catch (error) { const errorMessage = `❌ *Error removing subscriber:*\n\n\`\`\`\n${error.message || 'Unknown error'}\n\`\`\``; bot.sendMessage(fromId, errorMessage, { parse_mode: 'MarkdownV2' }); } return true; } return false; }
