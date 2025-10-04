@@ -1,4 +1,4 @@
-// --- START OF UPDATED server.js FILE ---
+// --- START OF FINAL server.js FILE ---
 
 require('dotenv').config();
 const express = require('express');
@@ -64,7 +64,6 @@ app.post('/api/shortcut', async (req, res) => {
     if (!smsText) {
         return res.status(400).send('Bad Request');
     }
-    // Sending SMS text as pre-formatted text to avoid markdown issues
     await bot.sendMessage(SUPER_ADMIN_ID, `🤖 Automated SMS Received:\n\`\`\`\n${smsText}\n\`\`\``, { parse_mode: 'MarkdownV2' });
     const amountRegex = /(?:Rs\.?|₹|INR)\s*([\d,]+\.\d{2})/;
     const match = smsText.match(amountRegex);
@@ -95,20 +94,42 @@ app.get('/api/internal/cron', async (req, res) => {
     }
 });
 
-// --- HELPER FUNCTION TO PREVENT CRASH ---
+// --- SMART UNIQUE AMOUNT GENERATOR ---
+/**
+ * Generates a unique amount by checking the database first.
+ * If the initial base amount range is full, it tries the next integer range.
+ * @param {number} baseAmount - The base amount (e.g., 99.00).
+ * @returns {Promise<number>} - A unique amount that is guaranteed not to be in PendingPayments.
+ */
 async function generateAndVerifyUniqueAmount(baseAmount) {
-    let attempts = 0;
-    while (attempts < 20) {
-        const randomPaisa = Math.floor(Math.random() * 90) + 10;
-        const candidateAmount = parseFloat((baseAmount + randomPaisa / 100).toFixed(2));
-        const existing = await PendingPayment.findOne({ unique_amount: candidateAmount });
-        if (!existing) {
-            return candidateAmount;
+    let currentBase = Math.floor(baseAmount); // Start with the integer part, e.g., 99
+    let maxBaseAttempts = 5; // How many times we try to increment the base (e.g., 99, 100, 101, 102, 103)
+    
+    for (let i = 0; i < maxBaseAttempts; i++) {
+        let attemptsInCurrentRange = 0;
+        // Try up to 20 times within the current range (e.g., 99.10 to 99.99)
+        while (attemptsInCurrentRange < 20) {
+            const randomPaisa = Math.floor(Math.random() * 90) + 10; // 10 to 99
+            const candidateAmount = parseFloat((currentBase + randomPaisa / 100).toFixed(2));
+            
+            const existing = await PendingPayment.findOne({ unique_amount: candidateAmount });
+            if (!existing) {
+                console.log(`[PaymentLink] Generated unique amount ${candidateAmount} for base ${baseAmount}`);
+                return candidateAmount; // Found a unique amount!
+            }
+            attemptsInCurrentRange++;
         }
-        attempts++;
+        
+        // If we exit the while loop, it means the current range (e.g., 99.xx) is likely full.
+        // Let's try the next range (e.g., 100.xx).
+        console.warn(`[PaymentLink] Range for base amount ${currentBase}.xx seems full. Trying next range...`);
+        currentBase++; 
     }
-    throw new Error('Failed to generate a unique payment amount after 20 attempts.');
+
+    // If we exit the for loop, it means we failed to find a unique amount even after trying multiple ranges.
+    throw new Error(`Failed to generate a unique payment amount after trying ${maxBaseAttempts} different base ranges. System might be overloaded.`);
 }
+
 
 // --- PAYMENT & CRON LOGIC ---
 async function processPayment(amount, bot, method = "Unknown") {
@@ -134,7 +155,6 @@ async function processPayment(amount, bot, method = "Unknown") {
         const inviteLinkExpireDate = Math.floor(Date.now() / 1000) + (24 * 60 * 60);
         const inviteLink = await bot.createChatInviteLink(channel_id, { member_limit: 1, expire_date: inviteLinkExpireDate });
 
-        // Escaping channel name in messages to be safe
         const safeChannelName = escapeMarkdownV2(channel.channel_name);
         
         await bot.sendMessage(subscriber_id, `✅ Payment confirmed\\! Your access to "*${safeChannelName}*" is active\\.\n\nJoin using this *one\\-time link*: ${inviteLink.invite_link}`, { parse_mode: 'MarkdownV2' });
@@ -149,7 +169,6 @@ async function processPayment(amount, bot, method = "Unknown") {
 
     } catch (error) {
         console.error("[processPayment] FATAL CRASH:", error);
-        // --- THIS IS THE FIX ---
         const safeErrorMessage = escapeMarkdownV2(error.message || 'Unknown error');
         const finalMessage = `❌ *CRITICAL ERROR* during payment processing for ₹${amount}\n\n*Error Details:*\n\`\`\`\n${safeErrorMessage}\n\`\`\``;
         await bot.sendMessage(SUPER_ADMIN_ID, finalMessage, { parse_mode: 'MarkdownV2' });
@@ -179,7 +198,6 @@ async function checkSubscriptions(bot) {
             removedCount++;
         } catch (error) {
             console.error(`[CRON] Failed to process user ${sub.telegram_id}. Error: ${error.message}`);
-            // In case of error, just delete the sub to avoid loops
             await Subscriber.findByIdAndDelete(sub._id);
         }
     }
@@ -198,14 +216,12 @@ bot.on('message', async (msg) => {
         const text = msg.text || "";
         const state = userStates[fromId];
 
-        // Handling report submission
         if (state && state.awaiting === 'report_reason') {
             const { channelId } = state;
             const channel = await ManagedChannel.findById(channelId).populate('owner_id');
             await Report.create({ reporter_id: fromId, reported_owner_id: channel.owner_id._id, reported_channel_id: channel._id, reason: text });
             await bot.sendMessage(fromId, "✅ Thank you for your report. The admin has been notified.");
             
-            // Escaping all variable content for safety
             const safeOwnerName = escapeMarkdownV2(channel.owner_id.first_name);
             const safeChannelName = escapeMarkdownV2(channel.channel_name);
             const safeReason = escapeMarkdownV2(text);
@@ -270,7 +286,7 @@ app.listen(PORT, () => {
     console.log(`🚀 Server is running on http://localhost:${PORT}`);
 });
 
-// Full, correct, copy-pasteable unchanged functions (with markdown fixes)
+// --- ADMIN COMMANDS AND CALLBACKS (UNCHANGED LOGIC, BUT WITH MARKDOWN FIXES) ---
 async function handleSuperAdminCommands(bot, msg) {
     const text = msg.text || "";
     const fromId = msg.from.id.toString();
@@ -373,4 +389,4 @@ async function handleAdminCallback(bot, cbq) {
     }
 }
 
-// --- END OF UPDATED server.js FILE ---
+// --- END OF FINAL server.js FILE ---
