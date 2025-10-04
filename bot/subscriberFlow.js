@@ -1,4 +1,4 @@
-// --- START OF FILE bot/subscriberFlow.js ---
+// subscriberFlow.js (UPDATED & COMPLETE)
 
 const ManagedChannel = require('../models/managedChannel.model');
 const PendingPayment = require('../models/pendingPayment.model');
@@ -15,9 +15,9 @@ function initializeSubscriberFlow(bot, userStates) {
 }
 
 async function handleSubscriberMessage(bot, msg) {
+    // Is function mein koi change nahi hai
     const chatId = msg.chat.id;
-    // --- FIX: Initialize text to an empty string if msg.text is undefined ---
-    const text = msg.text || "";
+    const text = msg.text;
 
     if (text.startsWith('/start ')) {
         const key = text.split(' ')[1];
@@ -79,8 +79,9 @@ async function handleSubscriberCallback(bot, cbq) {
         try {
             const uniqueAmount = await generateAndVerifyUniqueAmount(plan.price);
             
+            // Database mein entry create karo
             const pendingDoc = await PendingPayment.create({
-                unique_amount: uniqueAmount.toFixed(2), // Ensure it's a string with 2 decimal places
+                unique_amount: uniqueAmount,
                 subscriber_id: fromId,
                 owner_id: channel.owner_id,
                 channel_id: channel.channel_id,
@@ -89,22 +90,48 @@ async function handleSubscriberCallback(bot, cbq) {
                 channel_id_mongoose: channel._id
             });
             
-            await botInstance.sendMessage(process.env.SUPER_ADMIN_ID, `🔔 New Payment Link Generated:\n\nUser: \`${fromId}\`\nAmount: \`₹${uniqueAmount.toFixed(2)}\`\nChannel: ${channel.channel_name}`, { parse_mode: 'Markdown'});
+            await botInstance.sendMessage(process.env.SUPER_ADMIN_ID, `🔔 New Payment Link Generated:\n\nUser: \`${fromId}\`\nAmount: \`₹${uniqueAmount}\`\nChannel: ${channel.channel_name}`, { parse_mode: 'Markdown'});
             
-            const paymentUrl = `${process.env.YOUR_DOMAIN}/?amount=${uniqueAmount.toFixed(2)}`;
+            const paymentUrl = `${process.env.YOUR_DOMAIN}/?amount=${uniqueAmount}`;
             
-            const sentMessage = await bot.sendMessage(fromId, `Great! To get the *${plan.days} Days Plan*, please pay exactly *₹${uniqueAmount.toFixed(2)}* using the link below.\n\n*This link will expire soon.*`, {
+            // User ko payment button bhejo aur message ko save karo
+            const sentMessage = await bot.sendMessage(fromId, `Great! To get the *${plan.days} Days Plan*, please pay exactly *₹${uniqueAmount}* using the link below.\n\n*This link will expire in 5 minutes.*`, {
                 parse_mode: 'Markdown',
                 reply_markup: {
-                    inline_keyboard: [[{ text: `Pay ₹${uniqueAmount.toFixed(2)} Now`, url: paymentUrl }]]
+                    inline_keyboard: [[{ text: `Pay ₹${uniqueAmount} Now`, url: paymentUrl }]]
                 }
             });
             
             await bot.answerCallbackQuery(cbq.id);
 
-            // The automatic deletion is handled by the 'expires' index in the model.
-            // A manual setTimeout is less reliable on serverless platforms like Render.
-            // We can add a fallback check here if needed, but the DB index is superior.
+            // --- YAHAN SE HOGA MAGIC ---
+            // 5 MINUTE KA TIMER SET KARO (300000 milliseconds)
+            setTimeout(async () => {
+                try {
+                    // 5 min baad, database se is entry ko delete karne ki koshish karo
+                    const deletedPayment = await PendingPayment.findOneAndDelete({ _id: pendingDoc._id });
+
+                    // Agar entry delete hui (matlab user ne payment nahi ki thi)
+                    if (deletedPayment) {
+                        console.log(`Expired payment link for ₹${uniqueAmount} deleted for user ${fromId}`);
+                        // User ke chat mein jaakar purane message ko EDIT kar do
+                        await bot.editMessageText(
+                            `❌ **Payment Link Expired**\n\nThe link for amount ₹${uniqueAmount} has expired. Please generate a new one.`, 
+                            {
+                                chat_id: sentMessage.chat.id,
+                                message_id: sentMessage.message_id,
+                                reply_markup: { // Button hata do
+                                    inline_keyboard: []
+                                }
+                            }
+                        );
+                    }
+                } catch (error) {
+                    // Agar message edit karte waqt error aaye (ho sakta hai user ne chat delete kar di ho)
+                    // toh bas console mein log kardo, bot crash nahi hoga
+                    console.error(`Could not edit expired payment message for user ${fromId}:`, error.message);
+                }
+            }, 300000); // 5 minutes in milliseconds
 
         } catch (error) {
             console.error("Error generating unique amount or creating pending payment:", error);
@@ -119,5 +146,3 @@ module.exports = {
     handleSubscriberMessage,
     handleSubscriberCallback
 };
-
-// --- END OF FILE bot/subscriberFlow.js ---
