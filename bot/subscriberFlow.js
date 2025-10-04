@@ -1,13 +1,19 @@
-// subscriberFlow.js (UPDATED & COMPLETE)
+// --- START OF bot/subscriberFlow.js ---
 
 const ManagedChannel = require('../models/managedChannel.model');
 const PendingPayment = require('../models/pendingPayment.model');
-
-// server.js se function import kar rahe hain
-const { generateAndVerifyUniqueAmount } = require('../helpers');
+const { RENDER_EXTERNAL_URL, SUPER_ADMIN_ID } = process.env;
 
 let botInstance;
 let userStatesRef;
+
+// We need to get the main escape function from server.js
+function escapeMarkdownV2(text) {
+    if (typeof text !== 'string') text = String(text);
+    const escapeChars = '_*[]()~`>#+-=|{}.!';
+    return text.replace(new RegExp(`[${escapeChars.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&')}]`, 'g'), '\\$&');
+}
+
 
 function initializeSubscriberFlow(bot, userStates) {
     botInstance = bot;
@@ -15,128 +21,98 @@ function initializeSubscriberFlow(bot, userStates) {
 }
 
 async function handleSubscriberMessage(bot, msg) {
-    // Is function mein koi change nahi hai
-    const chatId = msg.chat.id;
-    const text = msg.text;
+    const fromId = msg.from.id.toString();
+    const text = msg.text || "";
 
     if (text.startsWith('/start ')) {
-        const key = text.split(' ')[1];
-        const channel = await ManagedChannel.findOne({ unique_start_key: key });
+        const uniqueKey = text.split(' ')[1];
+        const channel = await ManagedChannel.findOne({ unique_start_key: uniqueKey }).populate('owner_id');
+
         if (!channel) {
-            await bot.sendMessage(chatId, `Sorry, this subscription link is invalid or has expired.`);
-            return;
+            return bot.sendMessage(fromId, "This link seems to be invalid or expired\\. Please contact the channel owner for a new link\\.", { parse_mode: 'MarkdownV2' });
         }
+
+        userStatesRef[fromId] = {
+            channel_id: channel.channel_id,
+            channel_id_mongoose: channel._id,
+            owner_id: channel.owner_id._id,
+        };
+
+        const safeChannelName = escapeMarkdownV2(channel.channel_name);
+        const welcomeMessage = `Welcome to *${safeChannelName}*\\!\n\nPlease select a subscription plan:`;
         
-        const keyboard = channel.plans.map(plan => ([{
+        const planButtons = channel.plans.map(plan => ([{
             text: `${plan.days} Days for ₹${plan.price}`,
-            callback_data: `sub_plan_${channel._id}_${plan.days}`
+            callback_data: `sub_plan_${plan.days}_${plan.price}`
         }]));
 
-        await bot.sendMessage(chatId, `Welcome to *${channel.channel_name}*!\n\nPlease select a subscription plan:`, {
-            parse_mode: 'Markdown',
-            reply_markup: { inline_keyboard: keyboard }
+        await bot.sendMessage(fromId, welcomeMessage, {
+            parse_mode: 'MarkdownV2',
+            reply_markup: {
+                inline_keyboard: planButtons
+            }
         });
-    
-    } else {
-        const welcomeText = `
-👋 *Welcome to MonetizeGram!*
-
-The ultimate platform to monetize your Telegram channel or join exclusive premium content.
-
-What would you like to do today?
-        `;
-        const keyboard = {
-            inline_keyboard: [
-                [{ text: "🚀 Monetize My Channel", callback_data: "owner_add" }],
-                [{ text: "❓ How it Works", callback_data: "owner_help" }]
-            ]
-        };
-        await bot.sendMessage(chatId, welcomeText, {
-            parse_mode: 'Markdown',
-            reply_markup: keyboard
-        });
+        return;
     }
+
+    // Default message if user types something other than /start
+    const defaultMessage = "Please use the special link provided by the channel owner to start the subscription process\\.";
+    await bot.sendMessage(fromId, defaultMessage, { parse_mode: 'MarkdownV2' });
 }
 
-async function handleSubscriberCallback(bot, cbq) {
-    const fromId = cbq.from.id.toString();
-    const data = cbq.data;
+async function handleSubscriberCallback(bot, callbackQuery) {
+    const fromId = callbackQuery.from.id.toString();
+    const data = callbackQuery.data;
 
     if (data.startsWith('sub_plan_')) {
-        const [, , channelId, planDays] = data.split('_');
-        const channel = await ManagedChannel.findById(channelId);
-        if (!channel) {
-            await bot.answerCallbackQuery(cbq.id, { text: "This channel is no longer on our platform.", show_alert: true });
-            return;
-        }
+        await bot.answerCallbackQuery(callbackQuery.id);
+        const parts = data.split('_');
+        const days = parseInt(parts[2], 10);
+        const price = parseFloat(parts[3]);
 
-        const plan = channel.plans.find(p => p.days.toString() === planDays);
-        if (!plan) {
-            await bot.answerCallbackQuery(cbq.id, { text: "This plan is no longer available.", show_alert: true });
-            return;
+        const state = userStatesRef[fromId];
+        if (!state) {
+            return bot.sendMessage(fromId, "Something went wrong, your session has expired\\. Please use the start link again\\.", { parse_mode: 'MarkdownV2' });
         }
 
         try {
-            const uniqueAmount = await generateAndVerifyUniqueAmount(plan.price);
+            const uniqueAmount = await global.generateAndVerifyUniqueAmount(price);
             
-            // Database mein entry create karo
-            const pendingDoc = await PendingPayment.create({
-                unique_amount: uniqueAmount,
+            const formattedAmount = uniqueAmount.toFixed(2);
+
+            await PendingPayment.create({
                 subscriber_id: fromId,
-                owner_id: channel.owner_id,
-                channel_id: channel.channel_id,
-                plan_days: plan.days,
-                plan_price: plan.price,
-                channel_id_mongoose: channel._id
+                owner_id: state.owner_id,
+                channel_id: state.channel_id,
+                channel_id_mongoose: state.channel_id_mongoose,
+                plan_days: days,
+                plan_price: price,
+                unique_amount: uniqueAmount,
             });
+
+            // Send notification to admin
+            const channel = await ManagedChannel.findById(state.channel_id_mongoose);
+            // Using simple Markdown here, it's safer for simple messages.
+            const adminNotification = `🔔 New Payment Link Generated:\nUser: \`${fromId}\`\nAmount: \`₹${formattedAmount}\`\nChannel: ${channel.channel_name}`;
+            await bot.sendMessage(SUPER_ADMIN_ID, adminNotification, { parse_mode: 'Markdown' });
+
+            const paymentMessage = `Great\\! To get the *${days} Days Plan*, please pay exactly *₹${escapeMarkdownV2(formattedAmount)}* using the link below\\.\n\n*This link will expire in 5 minutes\\.*`;
             
-            await botInstance.sendMessage(process.env.SUPER_ADMIN_ID, `🔔 New Payment Link Generated:\n\nUser: \`${fromId}\`\nAmount: \`₹${uniqueAmount}\`\nChannel: ${channel.channel_name}`, { parse_mode: 'Markdown'});
+            const paymentUrl = `${RENDER_EXTERNAL_URL}/?amount=${formattedAmount}`;
             
-            const paymentUrl = `${process.env.YOUR_DOMAIN}/?amount=${uniqueAmount}`;
-            
-            // User ko payment button bhejo aur message ko save karo
-            const sentMessage = await bot.sendMessage(fromId, `Great! To get the *${plan.days} Days Plan*, please pay exactly *₹${uniqueAmount}* using the link below.\n\n*This link will expire in 5 minutes.*`, {
-                parse_mode: 'Markdown',
+            await bot.sendMessage(fromId, paymentMessage, {
+                parse_mode: 'MarkdownV2',
                 reply_markup: {
-                    inline_keyboard: [[{ text: `Pay ₹${uniqueAmount} Now`, url: paymentUrl }]]
+                    inline_keyboard: [[{
+                        text: `Pay ₹${formattedAmount} Now`, // Plain text, no escaping needed here
+                        url: paymentUrl
+                    }]]
                 }
             });
-            
-            await bot.answerCallbackQuery(cbq.id);
-
-            // --- YAHAN SE HOGA MAGIC ---
-            // 5 MINUTE KA TIMER SET KARO (300000 milliseconds)
-            setTimeout(async () => {
-                try {
-                    // 5 min baad, database se is entry ko delete karne ki koshish karo
-                    const deletedPayment = await PendingPayment.findOneAndDelete({ _id: pendingDoc._id });
-
-                    // Agar entry delete hui (matlab user ne payment nahi ki thi)
-                    if (deletedPayment) {
-                        console.log(`Expired payment link for ₹${uniqueAmount} deleted for user ${fromId}`);
-                        // User ke chat mein jaakar purane message ko EDIT kar do
-                        await bot.editMessageText(
-                            `❌ **Payment Link Expired**\n\nThe link for amount ₹${uniqueAmount} has expired. Please generate a new one.`, 
-                            {
-                                chat_id: sentMessage.chat.id,
-                                message_id: sentMessage.message_id,
-                                reply_markup: { // Button hata do
-                                    inline_keyboard: []
-                                }
-                            }
-                        );
-                    }
-                } catch (error) {
-                    // Agar message edit karte waqt error aaye (ho sakta hai user ne chat delete kar di ho)
-                    // toh bas console mein log kardo, bot crash nahi hoga
-                    console.error(`Could not edit expired payment message for user ${fromId}:`, error.message);
-                }
-            }, 300000); // 5 minutes in milliseconds
 
         } catch (error) {
-            console.error("Error generating unique amount or creating pending payment:", error);
-            await bot.sendMessage(fromId, "Sorry, something went wrong while generating your payment link. Please try again.");
-            await bot.answerCallbackQuery(cbq.id, { text: "Error. Please try again.", show_alert: true });
+            console.error("Error generating payment link:", error);
+            await bot.sendMessage(fromId, "Sorry, we couldn't generate a payment link right now\\. Please try again in a moment\\.", { parse_mode: 'MarkdownV2' });
         }
     }
 }
@@ -146,3 +122,5 @@ module.exports = {
     handleSubscriberMessage,
     handleSubscriberCallback
 };
+
+// --- END OF bot/subscriberFlow.js ---
